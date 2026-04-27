@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Personalize</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="nearbites-guard" content="1">
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) {
+            window.location.replace('/index.html');
+        } else {
+            const currentUser = JSON.parse(raw);
+            // 1 = Student
+            if (Number(currentUser.userType) !== 1) {
+                window.location.replace('/index.html');
+            }
+        }
+    </script>
+    <style>
+        .step { display: none; }
+        .step.active { display: block; }
+        .pill-checkbox:checked + label {
+            background-color: #b91c1c;
+            border-color: #b91c1c;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen font-sans">
+
+    <div id="nearbites-navbar"></div>
+
+    <div class="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-xl border border-gray-200 relative overflow-hidden">
+        
+        <div class="absolute top-0 left-0 w-full h-1.5 bg-gray-700">
+            <div id="progressBar" class="h-full bg-red-600 transition-all duration-500" style="width: 25%"></div>
+        </div>
+
+        <form id="onboardingForm" onsubmit="submitAll(event)">
+            
+            <div class="step active text-center" id="step0">
+                <span class="text-6xl mb-6 block">🍎</span>
+                <h2 class="text-4xl font-extrabold mb-4">Hey, <span class="text-red-500" id="welcomeName">Student</span>!</h2>
+                <p class="text-gray-400 leading-relaxed mb-10">Welcome to Nearbites. We're here to help you find the best eats around LPU-C. Let's set up your flavor profile so our AI knows exactly what you crave.</p>
+                <button type="button" onclick="nextStep(1)" class="w-full bg-red-700 py-4 rounded-xl font-bold hover:bg-red-600 transition shadow-lg">Get Started</button>
+            </div>
+
+            <div class="step" id="step1">
+                <span class="text-4xl mb-4 block text-center">💰</span>
+                <h2 class="text-2xl font-bold text-center mb-6">What's your daily budget?</h2>
+                <div class="relative max-w-xs mx-auto mb-10">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400 font-bold">₱</span>
+                    <input type="number" id="budgetInput" name="maxBudget" required placeholder="150" 
+                           class="w-full pl-10 pr-4 py-4 bg-gray-900 rounded-2xl border border-gray-600 focus:ring-2 focus:ring-red-600 outline-none text-xl font-bold">
+                </div>
+                <div class="flex space-x-4">
+                    <button type="button" onclick="nextStep(0)" class="w-1/3 bg-gray-700 py-4 rounded-xl font-bold">Back</button>
+                    <button type="button" onclick="nextStep(2)" class="w-2/3 bg-red-700 py-4 rounded-xl font-bold hover:bg-red-600 transition">Next</button>
+                </div>
+            </div>
+
+            <div class="step" id="step2">
+                <span class="text-4xl mb-4 block text-center">😋</span>
+                <h2 class="text-2xl font-bold text-center mb-2">What do you LOVE?</h2>
+                <p class="text-gray-400 text-sm text-center mb-6 italic">Tip: If you love it, we'll suggest it more often.</p>
+                
+                <div class="flex flex-wrap justify-center gap-3 mb-6" id="likesContainer">
+                    <input type="checkbox" id="v" value="Vegetarian" class="pill-checkbox hidden">
+                    <label for="v" class="px-5 py-2 border border-gray-600 rounded-full cursor-pointer hover:bg-gray-700 transition">Vegetarian</label>
+                    <input type="checkbox" id="h" value="Halal" class="pill-checkbox hidden">
+                    <label for="h" class="px-5 py-2 border border-gray-600 rounded-full cursor-pointer hover:bg-gray-700 transition">Halal</label>
+                </div>
+
+                <div class="flex space-x-2 px-4">
+                    <input type="text" id="customLike" placeholder="Type a food or diet..." 
+                           class="flex-grow bg-gray-900 border border-gray-600 rounded-xl px-4 py-2 text-sm outline-none focus:border-red-600">
+                    <button type="button" onclick="addCustomTag('customLike', 'likesContainer')" class="bg-red-700 px-4 py-2 rounded-xl font-bold">+</button>
+                </div>
+
+                <div class="flex space-x-4 mt-10">
+                    <button type="button" onclick="nextStep(1)" class="w-1/3 bg-gray-700 py-4 rounded-xl font-bold">Back</button>
+                    <button type="button" onclick="nextStep(3)" class="w-2/3 bg-red-700 py-4 rounded-xl font-bold hover:bg-red-600 transition">Next</button>
+                </div>
+            </div>
+
+            <div class="step" id="step3">
+                <span class="text-4xl mb-4 block text-center">🚫</span>
+                <h2 class="text-2xl font-bold text-center mb-2">What do you HATE?</h2>
+                <p class="text-gray-400 text-sm text-center mb-6 italic">We'll hide these items from your dashboard.</p>
+                
+                <div class="flex flex-wrap justify-center gap-3 mb-6" id="dislikesContainer">
+                    <input type="checkbox" id="s" value="Spicy" class="pill-checkbox hidden">
+                    <label for="s" class="px-5 py-2 border border-gray-600 rounded-full cursor-pointer hover:bg-gray-700 transition">Spicy</label>
+                </div>
+
+                <div class="flex space-x-2 px-4">
+                    <input type="text" id="customDislike" placeholder="Type an ingredient..." 
+                           class="flex-grow bg-gray-900 border border-gray-600 rounded-xl px-4 py-2 text-sm outline-none focus:border-red-600">
+                    <button type="button" onclick="addCustomTag('customDislike', 'dislikesContainer')" class="bg-red-700 px-4 py-2 rounded-xl font-bold">+</button>
+                </div>
+
+                <div class="flex space-x-4 mt-10">
+                    <button type="button" onclick="nextStep(2)" class="w-1/3 bg-gray-700 py-4 rounded-xl font-bold">Back</button>
+                    <button type="submit" class="w-2/3 bg-green-700 py-4 rounded-xl font-bold hover:bg-green-600 transition">Finish Setup</button>
+                </div>
+            </div>
+
+        </form>
+    </div>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        const currentUser = window.Nearbites && window.Nearbites.getCurrentUser ? window.Nearbites.getCurrentUser() : null;
+        if (!currentUser) window.location.replace('/index.html');
+        const welcomeNameEl = document.getElementById('welcomeName');
+        if (welcomeNameEl) welcomeNameEl.innerText = currentUser.username;
+
+        function nextStep(stepNum) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + stepNum).classList.add('active');
+            document.getElementById('progressBar').style.width = ((stepNum + 1) * 25) + '%';
+        }
+
+        function removeTag(wrapperId) {
+            const element = document.getElementById(wrapperId);
+            if (element) element.remove();
+        }
+
+        function addCustomTag(inputId, containerId) {
+            const input = document.getElementById(inputId);
+            const val = input.value.trim();
+            const lowerVal = val.toLowerCase();
+
+            if (!val) return;
+
+            // --- 🛑 VALIDATION: DUPLICATES & CONFLICTS ---
+            const allPills = Array.from(document.querySelectorAll('.pill-checkbox, .custom-pill-check'));
+            const exists = allPills.some(p => p.value.toLowerCase() === lowerVal);
+
+            if (exists) {
+                alert(`"${val}" is already in your profile! Check your Likes or Dislikes.`);
+                input.value = '';
+                return;
+            }
+
+            const container = document.getElementById(containerId);
+            const uniqueId = 'custom-' + Date.now();
+            const wrapperId = 'wrap-' + uniqueId;
+
+            // Create pill with working X button
+            const div = document.createElement('div');
+            div.id = wrapperId;
+            div.className = "flex items-center bg-red-700 text-white rounded-full px-4 py-2 text-sm font-bold animate-in fade-in zoom-in duration-300";
+            div.innerHTML = `
+                <input type="checkbox" class="custom-pill-check hidden" value="${val}" checked>
+                <span>${val}</span>
+                <button type="button" onclick="removeTag('${wrapperId}')" class="ml-2 hover:text-gray-300 transition text-lg">&times;</button>
+            `;
+            
+            container.appendChild(div);
+            input.value = '';
+        }
+
+        async function submitAll(event) {
+            event.preventDefault();
+            const budget = document.getElementById('budgetInput').value;
+            
+            // Collect standard pills + custom ones
+            const selected = Array.from(document.querySelectorAll('.pill-checkbox:checked, .custom-pill-check:checked'))
+                                  .map(cb => cb.value);
+            
+            try {
+                // Basic HTML5 validity check
+                const formEl = document.getElementById('onboardingForm');
+                if (formEl && !formEl.checkValidity()) { formEl.reportValidity(); return; }
+                // Save budget
+                const respBudget = await fetch('/api/preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUser.userId, preferenceType: 'BUDGET', maxBudget: budget })
+                });
+                if (!respBudget.ok) throw new Error('Failed to save budget');
+
+                // Save tags sequentially to simplify error handling
+                for (const pref of selected) {
+                    const r = await fetch('/api/preferences', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: currentUser.userId, preferenceType: 'TAG', tagId: null, ingredientId: null, maxBudget: null, description: pref })
+                    });
+                    if (!r.ok) throw new Error('Failed to save preference');
+                }
+
+                window.location.href = '/student-dashboard.html';
+            } catch (error) {
+                console.error(error);
+                alert('Error saving profile.');
+            }
+        }
+    </script>
+</body>
+</html>

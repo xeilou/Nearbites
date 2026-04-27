@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Student Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="nearbites-guard" content="1">
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) {
+            window.location.replace('/index.html');
+        } else {
+            const currentUser = JSON.parse(raw);
+            if (Number(currentUser.userType) !== 1) {
+                window.location.replace('/index.html');
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col relative">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow p-8 max-w-7xl mx-auto w-full">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900" id="userGreeting">Campus Menu</h2>
+            </div>
+            <div class="flex items-center space-x-3">
+                <input type="text" id="searchMenu" placeholder="Search food..." class="px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none w-64">
+                <button id="quickToggle" class="px-3 py-2 rounded-xl bg-gray-100 text-sm text-gray-800 hover:bg-gray-200 transition">Grab &amp; Go: Off</button>
+            </div>
+        </div>
+        <div id="menuContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            </div>
+    </main>
+
+    <button onclick="toggleAI()" class="fixed bottom-6 right-6 bg-red-700 text-white p-4 rounded-full shadow-2xl hover:bg-red-800 transition z-40 text-2xl">
+        ✨
+    </button>
+
+    <div id="aiPanel" class="fixed bottom-24 right-6 w-80 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-white p-6 z-50 hidden flex-col transition-all">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold text-lg flex items-center space-x-2"><span>✨</span> <span>Qwen AI</span></h3>
+            <button onclick="toggleAI()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        
+        <div class="space-y-3 mb-4">
+            <button onclick="generateMealPlan()" class="w-full bg-white text-black font-bold py-2.5 rounded-xl hover:bg-gray-200 transition text-sm">
+                🗓️ Generate Weekly Plan
+            </button>
+            <div class="flex space-x-2">
+                <input type="number" id="customBudget" placeholder="₱ Any" class="w-24 px-3 py-2 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white">
+                <button onclick="getBudgetRecommendation()" class="flex-grow border border-gray-700 text-white font-bold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm">
+                    💰 Budget Idea
+                </button>
+            </div>
+            <button onclick="viewMealPlan()" class="w-full border border-red-700 text-red-400 font-bold py-2 rounded-xl hover:bg-red-900/30 transition text-sm">
+                👀 View Current Plan
+            </button>
+        </div>
+
+        <div id="aiResponseBox" class="p-4 bg-gray-800 rounded-xl hidden text-sm border border-gray-700 max-h-48 overflow-y-auto">
+            <p id="aiResponseText" class="text-gray-200 leading-relaxed">Thinking...</p>
+        </div>
+    </div>
+
+    <div id="mealPlanModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">Your Weekly Menu</h2>
+                    <p class="text-gray-500 text-sm">AI-Curated for your profile</p>
+                </div>
+                <button onclick="toggleMealPlanModal(false)" class="text-gray-500 hover:text-black text-3xl font-bold">&times;</button>
+            </div>
+            <div id="mealPlanContent" class="space-y-6">
+                </div>
+        </div>
+    </div>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        (function(){
+            const currentUser = window.__NEARBITES_USER || (window.Nearbites && window.Nearbites.getCurrentUser ? window.Nearbites.getCurrentUser() : null);
+            if (!currentUser) return window.location.replace('/index.html');
+
+            const userGreeting = document.getElementById('userGreeting');
+            if (userGreeting) userGreeting.innerText = `Campus Menu - Hello, ${currentUser.username}!`;
+
+            // Render a Food Card (Reusable Function)
+            function createFoodCard(food, isHighlight = false) {
+                const card = document.createElement('div');
+                // Ensure search filtering works by adding data attributes
+                card.setAttribute('data-name', food.foodName.toLowerCase());
+                card.setAttribute('data-quick', food.isQuickServe);
+                
+                card.className = `food-card bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition flex-none ${isHighlight ? 'w-72 border-red-200 shadow-red-100' : 'w-full'}`;
+                
+                let badgesHTML = '';
+                if (food.matchReasons && food.matchReasons.length > 0) {
+                    food.matchReasons.forEach(reason => {
+                        badgesHTML += `<span class="inline-block bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full mr-1 mb-2">${reason}</span>`;
+                    });
+                }
+
+                card.innerHTML = `
+                    <img src="${food.imageUrl || 'https://placehold.co/400x200/eeeeee/a31621?text=Nearbites'}" class="w-full h-32 object-cover">
+                    <div class="p-4">
+                        ${badgesHTML}
+                        <div class="flex justify-between items-start mb-1">
+                            <h3 class="font-bold text-gray-900 line-clamp-1">${food.foodName}</h3>
+                            <span class="text-red-700 font-black text-sm">₱${food.foodPrice}</span>
+                        </div>
+                        <p class="text-gray-500 text-xs line-clamp-2 mb-3">${food.description || ''}</p>
+                        <button onclick="askAIPairing('${food.foodName}')" class="w-full text-xs font-bold text-gray-900 bg-gray-100 hover:bg-gray-200 py-2 rounded-lg transition flex justify-center items-center space-x-1">
+                            <span>✨ AI Pair</span>
+                        </button>
+                    </div>
+                `;
+                return card;
+            }
+
+            // Load Smart Menu
+            async function loadSmartMenu() {
+                const container = document.getElementById('menuContainer');
+                container.innerHTML = `
+                    <div class="col-span-full mb-8" id="recommendedSection">
+                        <h3 class="text-lg font-extrabold text-gray-900 mb-4 flex items-center space-x-2">
+                            <span>✨ Top Matches For You</span>
+                        </h3>
+                        <div id="recommendedScroll" class="flex overflow-x-auto space-x-4 pb-4 snap-x"></div>
+                    </div>
+                    <div class="col-span-full">
+                        <h3 class="text-lg font-extrabold text-gray-900 mb-4">All Campus Food</h3>
+                        <div id="allMenuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                    </div>
+                `;
+
+                try {
+                    const response = await fetch(`/api/food/smart-feed/${currentUser.userId}`);
+                    const data = await response.json();
+
+                    const recContainer = document.getElementById('recommendedScroll');
+                    const allContainer = document.getElementById('allMenuGrid');
+
+                    if (data.recommended && data.recommended.length > 0) {
+                        data.recommended.forEach(food => recContainer.appendChild(createFoodCard(food, true)));
+                    } else {
+                        recContainer.innerHTML = `<p class="text-gray-400 text-sm italic px-2">No perfect matches yet. Update your profile preferences!</p>`;
+                    }
+
+                    if (data.all && data.all.length > 0) {
+                        data.all.forEach(food => allContainer.appendChild(createFoodCard(food, false)));
+                    } else {
+                        allContainer.innerHTML = `<p class="text-gray-500 italic">No food items found on campus.</p>`;
+                    }
+                } catch (error) {
+                    console.error(error);
+                    container.innerHTML = `<p class="text-red-500 font-bold p-4 bg-red-50 rounded-xl">Failed to load the smart menu. Server error.</p>`;
+                }
+            }
+
+            // =====================================
+            // FRONTEND FILTERING (Search & Quick Serve)
+            // =====================================
+            let quickState = false;
+            
+            window.filterMenu = function() {
+                const query = document.getElementById('searchMenu').value.toLowerCase();
+                const cards = document.querySelectorAll('.food-card');
+                
+                cards.forEach(card => {
+                    const name = card.getAttribute('data-name');
+                    const isQuick = card.getAttribute('data-quick') === '1';
+                    
+                    const matchesSearch = name.includes(query);
+                    const matchesQuick = !quickState || isQuick;
+                    
+                    if (matchesSearch && matchesQuick) {
+                        card.classList.remove('hidden');
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+            };
+
+            const searchInput = document.getElementById('searchMenu');
+            if (searchInput) searchInput.addEventListener('input', window.filterMenu);
+            
+            const quickBtn = document.getElementById('quickToggle');
+            if (quickBtn) {
+                quickBtn.addEventListener('click', () => {
+                    quickState = !quickState;
+                    quickBtn.innerText = `Grab & Go: ${quickState ? 'On' : 'Off'}`;
+                    if (quickState) {
+                        quickBtn.classList.add('bg-red-700', 'text-white');
+                        quickBtn.classList.remove('bg-gray-100', 'text-gray-800');
+                    } else {
+                        quickBtn.classList.remove('bg-red-700', 'text-white');
+                        quickBtn.classList.add('bg-gray-100', 'text-gray-800');
+                    }
+                    window.filterMenu();
+                });
+            }
+
+            // =====================================
+            // AI FUNCTIONS (Attached to Window)
+            // =====================================
+            const aiBox = document.getElementById('aiResponseBox');
+            const aiText = document.getElementById('aiResponseText');
+
+            function showAIThinking() {
+                if (!aiBox || !aiText) return;
+                aiBox.classList.remove('hidden');
+                aiText.innerHTML = `<span class="animate-pulse">Analyzing culinary data... ✨</span>`;
+            }
+
+            window.toggleAI = function() {
+                const panel = document.getElementById('aiPanel');
+                panel.classList.toggle('hidden');
+                panel.classList.toggle('flex');
+            };
+
+            window.toggleMealPlanModal = function(show) {
+                document.getElementById('mealPlanModal').classList.toggle('hidden', !show);
+                document.getElementById('mealPlanModal').classList.toggle('flex', show);
+            };
+
+            window.askAIPairing = async function(foodName) {
+                // Ensure AI panel is open and visible
+                const panel = document.getElementById('aiPanel');
+                panel.classList.remove('hidden');
+                panel.classList.add('flex');
+                
+                showAIThinking();
+                try {
+                    const response = await fetch('/api/ai/recommend-bundle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ foodName })
+                    });
+                    const data = await response.json();
+                    aiText.innerText = data.recommendation || data.error || 'No recommendation.';
+                } catch (err) {
+                    aiText.innerText = 'Connection to AI failed.';
+                }
+            };
+
+            window.getBudgetRecommendation = async function() {
+                showAIThinking();
+                const customBgt = document.getElementById('customBudget').value; 
+                try {
+                    const response = await fetch('/api/ai/recommend-by-budget', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: currentUser.userId, customBudget: customBgt })
+                    });
+                    const data = await response.json();
+                    if (response.ok) aiText.innerHTML = `<span class="text-green-400 font-bold">Budget: ₱${data.budget}</span><br><br>${data.recommendation}`;
+                    else aiText.innerHTML = `${data.error}`;
+                } catch (err) {
+                    aiText.innerText = 'Connection to AI failed.';
+                }
+            };
+
+            window.generateMealPlan = async function() {
+                showAIThinking();
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const response = await fetch('/api/ai/generate-meal-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: currentUser.userId, startDate: today })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        aiText.innerHTML = `✅ ${data.message}`;
+                        setTimeout(window.viewMealPlan, 1000); 
+                    } else {
+                        aiText.innerText = data.error || 'AI failed.';
+                    }
+                } catch (err) {
+                    aiText.innerText = 'Connection to AI failed.';
+                }
+            };
+
+            window.viewMealPlan = async function() {
+                try {
+                    const response = await fetch(`/api/mealplans/user/${currentUser.userId}`);
+                    const data = await response.json();
+                    
+                    if (!response.ok) return alert(data.error);
+
+                    const container = document.getElementById('mealPlanContent');
+                    container.innerHTML = '';
+                    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+                    for (let i = 1; i <= 7; i++) {
+                        const dayEntries = data.entries.filter(e => e.dayOfWeek === i);
+                        if (dayEntries.length === 0) continue;
+
+                        let html = `<div class="bg-gray-50 rounded-2xl p-4 border border-gray-100"><h4 class="font-bold text-red-700 mb-3 border-b pb-2">${days[i-1]}</h4><div class="space-y-2">`;
+                        
+                        dayEntries.forEach(entry => {
+                            html += `
+                                <div class="flex justify-between items-center text-sm">
+                                    <div><span class="font-bold text-gray-700">${entry.mealType}:</span> ${entry.foodName}</div>
+                                    <span class="text-gray-500 font-semibold">₱${entry.foodPrice}</span>
+                                </div>`;
+                        });
+                        
+                        html += `</div></div>`;
+                        container.innerHTML += html;
+                    }
+                    
+                    toggleMealPlanModal(true);
+                } catch (error) {
+                    alert("Failed to load Meal Plan.");
+                }
+            };
+
+            // Start loading items
+            loadSmartMenu();
+        })();
+    </script>
+</body>
+</html>

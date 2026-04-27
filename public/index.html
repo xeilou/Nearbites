@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen font-sans selection:bg-red-200">
+
+    <div class="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md border border-gray-100 transition-all">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-red-700 tracking-tight">Nearbites</h1>
+            <p class="text-gray-500 mt-2" id="subtitle">Welcome back! Please login to your account.</p>
+        </div>
+
+        <form id="loginForm" class="space-y-5" onsubmit="handleLogin(event)">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
+                <input type="email" name="email" required 
+                       class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 focus:border-red-700 outline-none transition">
+            </div>
+           <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                <div class="relative">
+                    <input type="password" name="password" id="loginPassword" required 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 focus:border-red-700 outline-none transition">
+                    <button type="button" onclick="togglePassword('loginPassword')" class="absolute inset-y-0 right-4 flex items-center text-gray-400 hover:text-red-700 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="flex items-center justify-between">
+                <label class="flex items-center space-x-2 text-sm text-gray-600">
+                    <input type="checkbox" id="rememberMe" />
+                    <span>Remember me</span>
+                </label>
+                <button type="submit" class="bg-red-700 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-800 transition shadow-lg shadow-red-200">Log In</button>
+            </div>
+            <p class="text-center text-sm text-gray-600 mt-4">
+                Don't have an account? <a href="#" onclick="toggleMode('signup')" class="text-red-700 font-bold hover:underline">Sign up</a>
+            </p>
+        </form>
+
+        <form id="signupForm" class="space-y-5 hidden" onsubmit="handleSignup(event)">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+                <input type="text" name="username" required placeholder="e.g., JuanDelaCruz"
+                       class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none transition">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">School Email</label>
+                <input type="email" name="email" required placeholder="student@lpunetwork.edu.ph"
+                       class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none transition">
+                <p class="text-xs text-gray-400 mt-1">Must use a school email address.</p>
+            </div>
+            <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+            <div class="relative">
+                <input type="password" name="password" id="signupPassword" required 
+                    class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none transition">
+                <button type="button" onclick="togglePassword('signupPassword')" class="absolute inset-y-0 right-4 flex items-center text-gray-400 hover:text-red-700 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                </button>
+            </div>
+        </div>
+            <button type="submit" class="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-lg">
+                Create Student Account
+            </button>
+            <p class="text-center text-sm text-gray-600 mt-4">
+                Already have an account? <a href="#" onclick="toggleMode('login')" class="text-red-700 font-bold hover:underline">Log in</a>
+            </p>
+        </form>
+    </div>
+
+    <script>
+        // Switch between Login and Sign Up views
+        function toggleMode(mode) {
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            const subtitle = document.getElementById('subtitle');
+
+            if (mode === 'signup') {
+                loginForm.classList.add('hidden');
+                signupForm.classList.remove('hidden');
+                subtitle.innerText = "Create your student account to discover the best food.";
+            } else {
+                signupForm.classList.add('hidden');
+                loginForm.classList.remove('hidden');
+                subtitle.innerText = "Welcome back! Please login to your account.";
+            }
+        }
+
+        // Handle User Sign Up
+        async function handleSignup(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            // We force userType 1 (Student) for public signups
+            data.userType = 1; 
+            // Client-side password rules
+            if (!data.password || data.password.length < 8) {
+                return alert('Password must be at least 8 characters long.');
+            }
+
+            // Optionally enforce school email domain
+            if (!data.email || !data.email.includes('@lpunetwork')) {
+                return alert('Please register with your school email (must include @lpunetwork).');
+            }
+            try {
+                const password = document.getElementById('signupPassword').value;
+                const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+
+                if (!strongPasswordRegex.test(password)) {
+                    alert("Password must be at least 8 characters long and include at least one number and one special character.");
+                    return; // Stops the signup process
+                }
+
+                const response = await fetch('/api/users/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert('Account created successfully! You can now log in.');
+                    event.target.reset();
+                    toggleMode('login');
+                } else {
+                    alert(result.error || 'Failed to sign up.');
+                }
+            } catch (error) {
+                alert('Server error. Ensure your backend is running!');
+            }
+        }
+
+        // Handle User Login
+        async function handleLogin(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/api/users/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Store user according to Remember Me
+                    const rememberMe = document.getElementById('rememberMe').checked;
+                    const userData = JSON.stringify(result.user);
+
+                    if (rememberMe) {
+                        localStorage.setItem('nearbites_user', userData);
+                    } else {
+                        sessionStorage.setItem('nearbites_user', userData);
+                    }
+
+                    // Force change-password flow if required
+                    if (result.mustChangePassword) {
+                        window.location.replace('/change-password.html');
+                        return;
+                    }
+
+                    // Routing Logic
+                    if (result.user.userType === 1) {
+                        // Check if the user has set up their preferences yet
+                        const prefResponse = await fetch(`/api/preferences/${result.user.userId}`);
+                        const preferences = await prefResponse.json();
+
+                        if (preferences.length === 0) {
+                            // First time login! Send to onboarding
+                            window.location.href = '/onboarding.html';
+                        } else {
+                            // Returning user! Send to dashboard
+                            window.location.href = '/student-dashboard.html';
+                        }
+                    } else if (result.user.userType === 2) {
+                        window.location.href = '/seller-dashboard.html';
+                    } else if (result.user.userType === 3) {
+                        window.location.href = '/admin-dashboard.html';
+                    }
+                } else {
+                    alert(result.error || 'Invalid credentials.');
+                }
+            } catch (error) {
+                alert('Server error. Ensure your backend is running!');
+            }
+        }
+        
+        // Toggle Password Visibility
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            if (input.type === "password") {
+                input.type = "text";
+            } else {
+                input.type = "password";
+            }
+        }
+    </script>
+</body>
+</html>
