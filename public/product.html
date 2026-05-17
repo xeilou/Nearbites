@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Food Details</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="nearbites-guard" content="1">
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) window.location.replace('/index.html');
+        const currentUser = JSON.parse(raw);
+    </script>
+    <style>
+        .star-btn.active { color: #b91c1c; } /* text-red-700 */
+    </style>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col relative">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow p-8 max-w-5xl mx-auto w-full">
+        <a href="javascript:history.back()" class="inline-flex items-center space-x-2 text-gray-500 hover:text-red-700 font-bold mb-6 transition">
+            <span>&larr;</span> <span>Back to Menu</span>
+        </a>
+
+        <div id="productContainer" class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col md:flex-row hidden">
+            <div class="md:w-1/2 h-64 md:h-auto relative bg-gray-100">
+                <img id="foodImage" src="" class="w-full h-full object-cover absolute inset-0">
+            </div>
+            
+            <div class="md:w-1/2 p-8 lg:p-10 flex flex-col justify-center">
+                <div id="productStoreName" class="text-xs font-black text-red-600 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                    📍 Loading Store...
+                </div>
+                <h1 id="foodName" class="text-3xl font-black text-gray-900 mb-2">Loading...</h1>
+                <div class="text-2xl font-black text-red-700 mb-4">₱<span id="foodPrice">0.00</span></div>
+                
+                <p id="foodDesc" class="text-gray-600 mb-6 line-clamp-3">No description available.</p>
+
+                <div id="variationsContainer" class="mb-6 hidden">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Select Option</h3>
+                    <div id="variationsOptions" class="space-y-3"></div>
+                </div>
+
+                <div id="foodTagsContainer" class="flex flex-wrap gap-2 mb-6"></div>
+
+                <div class="flex space-x-4 mb-6 border-y border-gray-100 py-4">
+                    <div class="text-center">
+                        <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">Calories</div>
+                        <div id="foodCalories" class="font-black text-gray-900">--</div>
+                    </div>
+                    <div class="border-l border-gray-100"></div>
+                    <div class="text-center">
+                        <div class="text-xs text-gray-400 font-bold uppercase tracking-wider">Carbs (g)</div>
+                        <div id="foodCarbs" class="font-black text-gray-900">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-12 bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hidden" id="reviewsContainer">
+            <h2 class="text-2xl font-black text-gray-900 mb-6 flex items-center space-x-2"><span>⭐</span> <span>Student Reviews</span></h2>
+            
+            <div class="bg-gray-50 p-6 rounded-2xl border border-gray-200 mb-8">
+                <h3 class="font-bold text-gray-900 mb-3">Leave a Review</h3>
+                <div class="flex items-center space-x-2 text-2xl text-gray-300 mb-4 cursor-pointer" id="starSelector">
+                    <button class="star-btn hover:text-red-500 transition" data-val="1">★</button>
+                    <button class="star-btn hover:text-red-500 transition" data-val="2">★</button>
+                    <button class="star-btn hover:text-red-500 transition" data-val="3">★</button>
+                    <button class="star-btn hover:text-red-500 transition" data-val="4">★</button>
+                    <button class="star-btn hover:text-red-500 transition" data-val="5">★</button>
+                </div>
+                <button onclick="submitReview()" class="bg-gray-900 text-white font-bold py-2 px-6 rounded-xl hover:bg-red-700 transition shadow-md">Submit Rating</button>
+                <p id="reviewMsg" class="text-sm font-bold mt-2 hidden"></p>
+            </div>
+
+            <div id="reviewsList" class="space-y-4">
+                <p class="text-gray-500 italic">Loading reviews...</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const foodId = urlParams.get('id');
+        let selectedStars = 0;
+
+        if (!foodId) window.location.replace('/student-dashboard.html');
+
+        async function loadProduct() {
+            try {
+                const response = await fetch(`/api/food/item/${foodId}`);
+                if (!response.ok) throw new Error(`Backend returned status: ${response.status}`);
+                const food = await response.json();
+                console.log("🚨 FOOD DATA FROM BACKEND:", food); // <-- ADD THIS LINE!
+
+                if (document.getElementById('foodName')) document.getElementById('foodName').innerText = food.foodName;
+                if (document.getElementById('foodPrice')) document.getElementById('foodPrice').innerText = food.foodPrice;
+                if (document.getElementById('foodDesc')) document.getElementById('foodDesc').innerText = food.description || 'No description available.';
+                // 1. Create the reusable badge HTML
+                const badgeHTML = `<span class="ml-1 px-1.5 py-0.5 rounded-md text-[10px] font-black bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wider relative -top-1" title="Estimated by AI">AI</span>`;
+
+                // 2. Check the flags individually!
+                if (document.getElementById('foodCalories')) {
+                    const showCalorieBadge = food.isCaloriesAiEstimated ? badgeHTML : '';
+                    document.getElementById('foodCalories').innerHTML = `${food.calories || '--'} ${showCalorieBadge}`;
+                }
+
+                if (document.getElementById('foodCarbs')) {
+                    const showCarbBadge = food.isCarbsAiEstimated ? badgeHTML : '';
+                    document.getElementById('foodCarbs').innerHTML = `${food.carbs || '--'} ${showCarbBadge}`;
+                }
+                
+                // RENDER VARIATIONS
+                if (food.variations && food.variations.length > 0) {
+                    document.getElementById('variationsContainer').classList.remove('hidden');
+                    const opts = document.getElementById('variationsOptions');
+                    
+                    opts.innerHTML = food.variations.map((v, i) => `
+                        <label class="flex items-center justify-between p-4 border border-gray-200 rounded-2xl cursor-pointer hover:bg-red-50 transition has-[:checked]:border-red-600 has-[:checked]:bg-red-50 has-[:checked]:ring-1 has-[:checked]:ring-red-600">
+                            <div class="flex items-center space-x-3">
+                                <input type="radio" name="food_variation" value="${v.price}" class="w-5 h-5 text-red-600 accent-red-600" ${i === 0 ? 'checked' : ''} onchange="document.getElementById('foodPrice').innerText = parseFloat(this.value).toFixed(2);">
+                                <span class="font-bold text-gray-900">${v.variationName}</span>
+                            </div>
+                            <span class="font-black text-red-700 text-lg">₱${v.price}</span>
+                        </label>
+                    `).join('');
+                    
+                    // Set the default big price to the first variation
+                    document.getElementById('foodPrice').innerText = parseFloat(food.variations[0].price).toFixed(2);
+                }
+
+                // Properly inject the clickable link via Javascript!
+                if (document.getElementById('productStoreName')) {
+                    document.getElementById('productStoreName').innerHTML = `
+                        <a href="/store.html?id=${food.servedAt}" class="hover:text-red-700 transition underline decoration-red-200 underline-offset-4 flex items-center space-x-1">
+                            <span>📍</span> <span>${food.storeName}</span>
+                        </a>
+                    `;
+                }
+
+                // Render Image with cute Bento fallback!
+                const imgEl = document.getElementById('foodImage');
+                if (imgEl) {
+                    if (food.imageUrl) {
+                        imgEl.src = food.imageUrl;
+                    } else {
+                        // Replace the image tag with a cute div
+                        imgEl.outerHTML = `<div class="w-full h-full flex items-center justify-center text-7xl opacity-40 absolute inset-0">🍱</div>`;
+                    }
+                }
+                
+                // Render the Tags
+                // Render the Tags
+                const tagsContainer = document.getElementById('foodTagsContainer');
+                if (tagsContainer && food.foodTags) {
+                    const tagsList = food.foodTags.split(',').filter(t => t.trim() !== '');
+                    tagsContainer.innerHTML = tagsList.map(tag => 
+                        `<button onclick="window.location.href='/search-results.html?tags=${encodeURIComponent(tag.trim())}'" class="bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider hover:bg-red-700 hover:text-white transition shadow-sm cursor-pointer">${tag.trim()}</button>`
+                    ).join('');
+                }
+
+                if (document.getElementById('productContainer')) document.getElementById('productContainer').classList.remove('hidden');
+                if (document.getElementById('reviewsContainer')) document.getElementById('reviewsContainer').classList.remove('hidden');
+
+                loadReviews();
+            } catch (error) {
+                console.error("FRONTEND CRASH LOG:", error);
+                alert("Failed to load product details.");
+            }
+        }
+
+        async function loadReviews() {
+            try {
+                const response = await fetch(`/api/reviews/food/${foodId}`);
+                const reviews = await response.json();
+                
+                const list = document.getElementById('reviewsList');
+                if (reviews.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 italic">No reviews yet. Be the first!</p>';
+                    return;
+                }
+
+                list.innerHTML = reviews.map(r => `
+                    <div class="p-4 border border-gray-100 rounded-xl bg-gray-50 flex items-center justify-between">
+                        <div class="font-bold text-gray-900">${r.username}</div>
+                        <div class="text-red-700 tracking-widest text-lg">${'★'.repeat(Math.round(r.starRating))}${'<span class="text-gray-300">' + '★'.repeat(5 - Math.round(r.starRating)) + '</span>'}</div>
+                    </div>
+                `).join('');
+            } catch (error) { console.error("Failed to load reviews"); }
+        }
+
+        // Star Selection Logic
+        document.querySelectorAll('.star-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                selectedStars = parseInt(e.target.dataset.val);
+                document.querySelectorAll('.star-btn').forEach(b => {
+                    b.classList.toggle('active', parseInt(b.dataset.val) <= selectedStars);
+                });
+            });
+        });
+
+        async function submitReview() {
+            const msg = document.getElementById('reviewMsg');
+            if (selectedStars === 0) {
+                msg.innerText = "Please select a star rating first!";
+                msg.className = "text-sm font-bold mt-2 text-red-600 block";
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/reviews', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUser.userId, foodId: foodId, starRating: selectedStars })
+                });
+
+                if (response.ok) {
+                    const data = await response.json(); 
+                    msg.innerText = data.message;       
+                    msg.className = "text-sm font-bold mt-2 text-green-600 block";
+                    loadReviews(); 
+                } else {
+                    const data = await response.json();
+                    msg.innerText = data.error || "Failed to submit.";
+                    msg.className = "text-sm font-bold mt-2 text-red-600 block";
+                }
+            } catch (err) {
+                msg.innerText = "Connection error.";
+                msg.className = "text-sm font-bold mt-2 text-red-600 block";
+            }
+        }
+
+        loadProduct();
+    </script>
+</body>
+</html>

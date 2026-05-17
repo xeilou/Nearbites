@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Profile Settings</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) window.location.replace('/index.html');
+        const currentUser = JSON.parse(raw);
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow p-8 max-w-4xl mx-auto w-full space-y-8 mt-8">
+        
+        <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <h2 class="text-2xl font-black text-gray-900 mb-6">Account Details</h2>
+            <form id="profileForm" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Display Name</label>
+                        <input type="text" id="profName" class="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-700">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Email</label>
+                        <input type="email" id="profEmail" class="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-700">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Change Password (Optional)</label>
+                    <input type="password" id="profPass" placeholder="Leave blank to keep current password" class="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-700">
+                </div>
+                <button type="submit" class="bg-gray-900 text-white font-bold py-3 px-8 rounded-xl hover:bg-black transition shadow-lg">Save Account</button>
+            </form>
+        </div>
+
+        <div class="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+            <h2 class="text-2xl font-black text-gray-900 mb-2">Dietary Preferences</h2>
+            <p class="text-gray-500 text-sm mb-6">Train the AI by adding tags you love, and ingredients you hate.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="bg-green-50/50 p-6 rounded-2xl border border-green-100">
+                    <h3 class="font-bold text-green-800 mb-4 flex items-center space-x-2"><span>👍</span> <span>I Love (Tags)</span></h3>
+                    <div class="flex space-x-2 mb-4">
+                        <input type="text" id="likeInput" placeholder="e.g., Spicy, Vegan" class="flex-1 px-3 py-2 rounded-lg border border-green-200 outline-none focus:border-green-500">
+                        <button onclick="addPreference('TAG')" class="bg-green-600 text-white px-4 rounded-lg font-bold hover:bg-green-700 transition">Add</button>
+                    </div>
+                    <div id="likesList" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <div class="bg-red-50/50 p-6 rounded-2xl border border-red-100">
+                    <h3 class="font-bold text-red-800 mb-4 flex items-center space-x-2"><span>🚫</span> <span>Allergies / I Hate</span></h3>
+                    <div class="flex space-x-2 mb-4">
+                        <input type="text" id="dislikeInput" placeholder="e.g., Peanuts, Dairy" class="flex-1 px-3 py-2 rounded-lg border border-red-200 outline-none focus:border-red-500">
+                        <button onclick="addPreference('DISLIKE')" class="bg-red-600 text-white px-4 rounded-lg font-bold hover:bg-red-700 transition">Add</button>
+                    </div>
+                    <div id="dislikesList" class="flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end mt-8">
+            <button onclick="logoutUser()" class="bg-red-50 text-red-700 font-bold py-3 px-8 rounded-xl hover:bg-red-100 transition border border-red-200 shadow-sm flex items-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <span>Log Out of Nearbites</span>
+            </button>
+        </div>
+
+    </main>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        // 1. Load Account Details
+        document.getElementById('profName').value = currentUser.username;
+        document.getElementById('profEmail').value = currentUser.email;
+
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const body = {
+                username: document.getElementById('profName').value,
+                email: document.getElementById('profEmail').value
+            };
+            const pass = document.getElementById('profPass').value;
+            if (pass) body.password = pass;
+
+            try {
+                const res = await fetch(`/api/users/${currentUser.userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    alert('Profile updated!');
+                    currentUser.username = body.username;
+                    currentUser.email = body.email;
+                    localStorage.setItem('nearbites_user', JSON.stringify(currentUser));
+                    window.location.reload();
+                } else alert('Update failed.');
+            } catch (err) { alert('Connection error.'); }
+        });
+
+        // 2. Load Preferences
+        async function loadPrefs() {
+            try {
+                const res = await fetch(`/api/preferences/${currentUser.userId}`);
+                const prefs = await res.json();
+                
+                const likes = document.getElementById('likesList');
+                const dislikes = document.getElementById('dislikesList');
+                likes.innerHTML = ''; dislikes.innerHTML = '';
+
+                prefs.forEach(p => {
+                    if (p.preferenceType === 'BUDGET') return; // Skip budget for this UI
+                    
+                    const pill = document.createElement('div');
+                    pill.className = `flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm font-bold border ${p.preferenceType === 'TAG' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`;
+                    pill.innerHTML = `<span>${p.description}</span> <button onclick="deletePref(${p.preferenceId})" class="hover:text-black">&times;</button>`;
+                    
+                    if (p.preferenceType === 'TAG') likes.appendChild(pill);
+                    else dislikes.appendChild(pill);
+                });
+            } catch (err) { console.error(err); }
+        }
+
+        window.addPreference = async function(type) {
+            const inputEl = type === 'TAG' ? document.getElementById('likeInput') : document.getElementById('dislikeInput');
+            const val = inputEl.value.trim();
+            if (!val) return;
+
+            try {
+                const res = await fetch('/api/preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: currentUser.userId, preferenceType: type, description: val })
+                });
+                if (res.ok) {
+                    inputEl.value = '';
+                    loadPrefs();
+                }
+            } catch (err) { alert('Failed to save preference.'); }
+        };
+
+        window.deletePref = async function(id) {
+            try {
+                const res = await fetch(`/api/preferences/${id}`, { method: 'DELETE' });
+                if (res.ok) loadPrefs();
+            } catch (err) { alert('Failed to delete.'); }
+        };
+
+        loadPrefs();
+    </script>
+</body>
+</html>

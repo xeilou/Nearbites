@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Smart Meal Plan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) window.location.replace('/index.html');
+        const currentUser = JSON.parse(raw);
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full">
+        
+        <div class="mb-8 border-b border-gray-100 pb-8">
+            <div class="inline-flex items-center space-x-2 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider mb-4 border border-purple-200 shadow-sm">
+                <span>✨</span> <span>Powered by AI</span>
+            </div>
+            <h1 class="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-2">Smart Meal Plan</h1>
+            <p class="text-gray-500 font-medium text-lg">Let our AI build your perfect week on campus.</p>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            
+            <div class="w-full lg:w-1/3 flex flex-col space-y-6">
+                
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                    <h3 class="text-xl font-black text-gray-900 mb-4 flex items-center space-x-2">
+                        <span>⚙️</span> <span>Plan Settings</span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Dietary Goal</label>
+                            <input type="text" id="weeklyGoal" placeholder="e.g. Weight Gain, Keto, Vegan..." class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium text-gray-900 transition">
+                        </div>
+                        
+                        <div class="flex space-x-4">
+                            <div class="w-1/2">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Weekly Budget</label>
+                                <input type="number" id="weeklyBudget" placeholder="₱ Max" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium text-gray-900 transition">
+                            </div>
+                            <div class="w-1/2">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Min Rating</label>
+                                <select id="weeklyStars" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium text-gray-600 transition">
+                                    <option value="0">Any</option>
+                                    <option value="3">3+ Stars</option>
+                                    <option value="4">4+ Stars</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 mt-2">Select Days & Meals</label>
+                            <div class="bg-gray-50 rounded-2xl p-3 border border-gray-200">
+                                <div id="scheduleGrid" class="space-y-2 max-h-64 overflow-y-auto pr-2"></div>
+                            </div>
+                        </div>
+
+                        <button onclick="generateMealPlan()" class="w-full bg-red-700 text-white font-black text-lg py-4 rounded-xl hover:bg-red-800 transition shadow-lg hover:shadow-xl hover:-translate-y-0.5 mt-4 flex items-center justify-center space-x-2">
+                            <span>✨ Generate New Plan</span>
+                        </button>
+                        
+                        <div id="aiResponseBox" class="p-4 bg-purple-50 text-purple-900 rounded-xl hidden text-sm font-medium border border-purple-100">
+                            <p id="aiResponseText" class="leading-relaxed">Thinking...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="w-full lg:w-2/3">
+                <div class="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 min-h-[600px]">
+                    <div class="flex justify-between items-center mb-8 pb-4 border-b border-gray-100">
+                        <h2 class="text-2xl font-black text-gray-900">Your Current Menu</h2>
+                    </div>
+                    
+                    <div id="mealPlanContent" class="space-y-8">
+                        <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                            <div class="text-6xl mb-4 animate-bounce">🤖</div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-2">No active plan found</h3>
+                            <p class="text-gray-500 max-w-sm">Use the configuration panel on the left to generate your first AI Meal Plan!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        (function() {
+            // 1. Initialize the Schedule Grid
+            const schedContainer = document.getElementById('scheduleGrid');
+            if (schedContainer) {
+                const days = [
+                    {i:1, n:'Mon', fn:'Monday'}, {i:2, n:'Tue', fn:'Tuesday'}, {i:3, n:'Wed', fn:'Wednesday'}, 
+                    {i:4, n:'Thu', fn:'Thursday'}, {i:5, n:'Fri', fn:'Friday'}, {i:6, n:'Sat', fn:'Saturday'}, {i:7, n:'Sun', fn:'Sunday'}
+                ];
+                let html = '';
+                days.forEach(d => {
+                    html += `
+                    <div class="flex items-center justify-between text-sm bg-white px-3 py-2.5 rounded-xl border border-gray-200 shadow-sm transition hover:border-red-200">
+                        <label class="flex items-center space-x-3 text-gray-700 font-bold cursor-pointer hover:text-red-700 transition">
+                            <input type="checkbox" class="day-check accent-red-600 w-4 h-4 cursor-pointer" data-day="${d.i}" data-dayname="${d.fn}" onchange="toggleMeals('${d.i}', this.checked)">
+                            <span>${d.n}</span>
+                        </label>
+                        <div class="flex space-x-3 md:space-x-4 opacity-30 pointer-events-none transition-opacity duration-300" id="meals-day-${d.i}">
+                            <label class="cursor-pointer flex items-center space-x-1 font-bold text-gray-500 hover:text-gray-900 transition"><input type="checkbox" class="meal-check accent-red-600 w-3.5 h-3.5" value="Breakfast"><span>B</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 font-bold text-gray-500 hover:text-gray-900 transition"><input type="checkbox" class="meal-check accent-red-600 w-3.5 h-3.5" value="Lunch"><span>L</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 font-bold text-gray-500 hover:text-gray-900 transition"><input type="checkbox" class="meal-check accent-red-600 w-3.5 h-3.5" value="Dinner"><span>D</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 font-bold text-gray-500 hover:text-gray-900 transition"><input type="checkbox" class="meal-check accent-red-600 w-3.5 h-3.5" value="Snack"><span>S</span></label>
+                        </div>
+                    </div>`;
+                });
+                schedContainer.innerHTML = html;
+            }
+
+            window.toggleMeals = function(dayId, isChecked) {
+                const container = document.getElementById('meals-day-' + dayId);
+                if (isChecked) {
+                    container.classList.remove('opacity-30', 'pointer-events-none');
+                    // Default to selecting Lunch when a day is clicked
+                    container.querySelectorAll('.meal-check')[1].checked = true; 
+                } else {
+                    container.classList.add('opacity-30', 'pointer-events-none');
+                    container.querySelectorAll('.meal-check').forEach(cb => cb.checked = false);
+                }
+            };
+
+            const aiBox = document.getElementById('aiResponseBox');
+            const aiText = document.getElementById('aiResponseText');
+
+            function showAIThinking() {
+                aiBox.classList.remove('hidden');
+                aiText.innerHTML = `<div class="flex items-center space-x-2"><div class="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-700"></div><span>Analyzing campus menus...</span></div>`;
+            }
+
+            // 2. Generate Plan Logic
+            window.generateMealPlan = async function() {
+                let scheduleConfig = [];
+                document.querySelectorAll('.day-check:checked').forEach(cb => {
+                    let dId = cb.dataset.day;
+                    let meals = [];
+                    document.getElementById('meals-day-'+dId).querySelectorAll('.meal-check:checked').forEach(mc => meals.push(mc.value));
+                    if(meals.length > 0) scheduleConfig.push(`${cb.dataset.dayname} (Day ${dId}): ${meals.join(', ')}`);
+                });
+                
+                const finalScheduleStr = scheduleConfig.join(' | ');
+                if (!finalScheduleStr) return alert("Please select at least one day and meal!");
+
+                showAIThinking();
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const response = await fetch('/api/ai/generate-meal-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            userId: currentUser.userId, 
+                            startDate: today, 
+                            goal: document.getElementById('weeklyGoal').value,
+                            schedule: finalScheduleStr,
+                            customBudget: document.getElementById('weeklyBudget').value,
+                            minStars: document.getElementById('weeklyStars').value
+                        })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        aiText.innerHTML = `✅ ${data.message}`;
+                        setTimeout(window.viewMealPlan, 1000); 
+                    } else { aiText.innerText = data.error || 'AI failed to generate a plan.'; }
+                } catch (err) { aiText.innerText = 'Connection to AI Server failed.'; }
+            };
+
+            // 3. Render Plan Logic
+            window.viewMealPlan = async function() {
+                try {
+                    const response = await fetch(`/api/mealplans/user/${currentUser.userId}`);
+                    const data = await response.json();
+                    if (!response.ok) return; // Silent fail if no plan exists yet
+
+                    const container = document.getElementById('mealPlanContent');
+                    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    let hasContent = false;
+                    let newHTML = '';
+
+                    for (let i = 1; i <= 7; i++) {
+                        const dayEntries = data.entries.filter(e => Number(e.dayOfWeek) === i);
+                        if (dayEntries.length === 0) continue;
+                        hasContent = true;
+
+                        newHTML += `
+                        <div class="mb-8">
+                            <h4 class="font-black text-xl text-gray-900 mb-4 flex items-center space-x-2 border-l-4 border-red-600 pl-3">
+                                <span>📅</span> <span>${days[i-1]}</span>
+                            </h4>
+                            <div class="space-y-3">`;
+                        
+                        dayEntries.forEach(entry => {
+                            newHTML += `
+                                <div onclick="window.location.href='/product.html?id=${entry.foodId}'" class="flex items-center p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:shadow-md hover:border-red-200 transition duration-300 group cursor-pointer">
+                                    ${entry.imageUrl 
+                                        ? `<img src="${entry.imageUrl}" class="w-16 h-16 rounded-xl object-cover border border-gray-200 mr-4 group-hover:scale-105 transition-transform duration-300">`
+                                        : `<div class="w-16 h-16 bg-white rounded-xl flex items-center justify-center text-3xl border border-gray-200 mr-4 group-hover:scale-105 transition-transform duration-300 overflow-hidden shadow-sm">🍱</div>`
+                                    }
+                                    <div class="flex-1">
+                                        <div class="text-[10px] font-black text-red-600 uppercase tracking-wider mb-1">${entry.mealType}</div>
+                                        <div class="font-bold text-gray-900 leading-tight text-lg group-hover:text-red-700 transition">${entry.foodName}</div>
+                                        <div class="text-xs text-gray-500 mt-1 font-medium flex items-center space-x-1">
+                                            <span>📍</span> <span class="truncate">${entry.storeName}</span>
+                                        </div>
+                                    </div>
+                                    <div class="font-black text-gray-900 text-lg bg-white shadow-sm border border-gray-100 px-3 py-2 rounded-xl group-hover:bg-red-50 group-hover:text-red-700 group-hover:border-red-200 transition-colors">₱${entry.foodPrice}</div>
+                                </div>`;
+                        });
+                        newHTML += `</div></div>`;
+                    }
+                    
+                    if (hasContent) {
+                        container.innerHTML = newHTML;
+                    }
+
+                } catch (error) { 
+                    console.error("No plan to load, or fetch failed."); 
+                }
+            };
+
+            // Load existing plan instantly when the page opens!
+            viewMealPlan();
+        })();
+    </script>
+</body>
+</html>

@@ -1,11 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const db = require('./db');
+const { askGPT } = require('./ai.js');
 require('dotenv').config();
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const fs = require('fs'); // Built-in Node module for file system operations
-const { askGPT } = require('./ai'); // Add this near your other requires
 
 const app = express();
 
@@ -53,21 +53,45 @@ app.post('/api/food/upload', upload.single('foodImage'), async (req, res) => {
     }
 });
 
+// ==========================================
+// STORE CRUD - UPLOAD IMAGE
+// ==========================================
+app.post('/api/stores/upload', upload.single('storeImage'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No image file provided.' });
+
+        const result = await cloudinary.uploader.upload(req.file.path, {
+            folder: 'nearbites_stores', // Separate folder to keep things organized!
+        });
+
+        fs.unlinkSync(req.file.path);
+
+        res.status(200).json({ 
+            message: 'Store image uploaded successfully!',
+            imageUrl: result.secure_url 
+        });
+    } catch (error) {
+        console.error('Error uploading store image:', error);
+        res.status(500).json({ error: 'Failed to upload store image.' });
+    }
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 
 // ==========================================
-// USERS CRUD - CREATE (Public Sign Up)
+// USERS CRUD - CREATE (Public Sign Up & Admin Provisioning)
 // ==========================================
 app.post('/api/users/signup', async (req, res) => {
     try {
-        // 1. We removed 'userId' from here!
         const { email, password, username, userType } = req.body;
+        const parsedType = Number(userType) || 1;
 
         // 2. Email Domain Validation Rule
-        if (!email.endsWith('@lpunetwork.edu.ph')) {
+        // Students (1) and Admins (3) MUST use the school email. Sellers (2) can use ANY email!
+        if ((parsedType === 1 || parsedType === 3) && !email.includes('@lpunetwork')) {
             return res.status(403).json({ 
-                error: 'Access denied. Only valid school emails can sign up here.' 
+                error: 'Access denied. Students and Admins must use a valid school email.' 
             });
         }
 
@@ -75,9 +99,9 @@ app.post('/api/users/signup', async (req, res) => {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-        // 4. Insert into the database (Removed userId from the query!)
+        // 4. Insert into the database
         const query = 'INSERT INTO `Users` (`email`, `password`, `username`, `userType`) VALUES (?, ?, ?, ?)';
-        await db.execute(query, [email, hashedPassword, username, userType || 1]);
+        await db.execute(query, [email, hashedPassword, username, parsedType]);
 
         res.status(201).json({ message: 'User created successfully!' });
     } catch (error) {
@@ -126,17 +150,23 @@ app.post('/api/users/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
 
+        // STRICT SUSPENSION CHECK
+        if (user.isActive === 0) {
+            return res.status(403).json({ error: '🚨 This account has been suspended by the platform administrator.' });
+        }
+
         // 4. Success! Send back the user data so the frontend knows who logged in
-        // Note: NEVER send the hashed password back to the frontend!
         res.status(200).json({
             message: 'Login successful!',
             user: {
                 userId: user.userId,
                 username: user.username,
                 email: user.email,
-                userType: user.userType
-            },
-            mustChangePassword: !!user.mustChangePassword
+                userType: user.userType,
+                hasCompletedOnboarding: user.hasCompletedOnboarding || 0,
+                // MOVE THIS INSIDE THE USER OBJECT:
+                mustChangePassword: user.mustChangePassword || 0 
+            }
         });
 
     } catch (error) {
@@ -146,63 +176,54 @@ app.post('/api/users/login', async (req, res) => {
 });
 
 // ==========================================
-// USERS CRUD - UPDATE (Change Username/Password)
+// USER CRUD - COMPLETE ONBOARDING FOREVER
+// ==========================================
+app.post('/api/users/complete-onboarding/:userId', async (req, res) => {
+    try {
+        const query = 'UPDATE `Users` SET `hasCompletedOnboarding` = 1 WHERE `userId` = ?';
+        await db.execute(query, [req.params.userId]);
+        res.status(200).json({ message: 'Onboarding marked as complete!' });
+    } catch (error) {
+        console.error("Onboarding DB Error:", error);
+        res.status(500).json({ error: 'Failed to update onboarding status.' });
+    }
+});
+
+// ==========================================
+// USER CRUD - UPDATE (Profile & Admin Edit)
 // ==========================================
 app.put('/api/users/:userId', async (req, res) => {
     try {
-        // 1. Grab the user's ID from the URL link itself (e.g., /api/users/101)
-        const targetUserId = req.params.userId;
+        const userId = req.params.userId;
+        const { username, password, email, userType, isActive } = req.body;
         
-        // 2. Grab the new data the frontend wants to save
-        const { username, password, mustChangePassword } = req.body;
+        let updateFields = [];
+        let values = [];
 
-        // Make sure they actually sent something to update
-        if (!username && !password && mustChangePassword === undefined) {
-            return res.status(400).json({ error: 'Please provide a new username, password, or mustChangePassword flag to update.' });
-        }
-
-        // 3. Prepare our dynamic SQL query based on what was sent
-        let query = 'UPDATE `Users` SET ';
-        const values = [];
-
-        if (username) {
-            query += '`username` = ? ';
-            values.push(username);
-        }
-
+        // Dynamically build the SQL query based on what the frontend sent
+        if (username) { updateFields.push('`username` = ?'); values.push(username); }
+        if (email) { updateFields.push('`email` = ?'); values.push(email); }
+        if (userType) { updateFields.push('`userType` = ?'); values.push(userType); }
+        if (isActive !== undefined) { updateFields.push('`isActive` = ?'); values.push(isActive); }
+        
         if (password) {
-            // If they are updating both, we need a comma in our SQL syntax
-            if (username) query += ', '; 
-            
-            query += '`password` = ? ';
-            // Always remember to hash the new password for security!
             const saltRounds = 10;
             const hashedPassword = await bcrypt.hash(password, saltRounds);
+            updateFields.push('`password` = ?, `mustChangePassword` = 0');
             values.push(hashedPassword);
         }
 
-        if (mustChangePassword !== undefined) {
-            if (username || password) query += ', ';
-            query += '`mustChangePassword` = ? ';
-            values.push(mustChangePassword ? 1 : 0);
+        if (updateFields.length === 0) {
+            return res.status(400).json({ error: 'No fields to update.' });
         }
 
-        // Add the WHERE clause so we only update this specific user
-        query += 'WHERE `userId` = ?';
-        values.push(targetUserId);
+        const query = `UPDATE \`Users\` SET ${updateFields.join(', ')} WHERE \`userId\` = ?`;
+        values.push(userId);
 
-        // 4. Execute the update
-        const [result] = await db.execute(query, values);
-
-        // Check if the user actually existed in the database
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'User not found.' });
-        }
-
-        res.status(200).json({ message: 'User updated successfully!' });
-
+        await db.execute(query, values);
+        res.status(200).json({ message: 'User updated successfully.' });
     } catch (error) {
-        console.error('Error updating user:', error);
+        console.error(error);
         res.status(500).json({ error: 'Failed to update user.' });
     }
 });
@@ -238,14 +259,15 @@ app.post('/api/admin/create-seller', async (req, res) => {
 // ==========================================
 app.post('/api/stores', async (req, res) => {
     try {
-        const { storeManager, storeName, storeLocation } = req.body;
+        // NEW: Added imageUrl
+        const { storeManager, storeName, storeLocation, imageUrl } = req.body;
 
         if (!storeManager || !storeName || !storeLocation) {
             return res.status(400).json({ error: 'Store manager, name, and location are required.' });
         }
 
-        const query = 'INSERT INTO `Stores` (`storeManager`, `storeName`, `storeLocation`) VALUES (?, ?, ?)';
-        await db.execute(query, [storeManager, storeName, storeLocation]);
+        const query = 'INSERT INTO `Stores` (`storeManager`, `storeName`, `storeLocation`, `imageUrl`) VALUES (?, ?, ?, ?)';
+        await db.execute(query, [storeManager, storeName, storeLocation, imageUrl || null]);
 
         res.status(201).json({ message: 'Store successfully registered!' });
     } catch (error) {
@@ -255,11 +277,110 @@ app.post('/api/stores', async (req, res) => {
 });
 
 // ==========================================
+// FOOD CRUD - CREATE NEW FOOD (WITH AI NUTRITION)
+// ==========================================
+app.post('/api/food', async (req, res) => {
+    try {
+        let { servedAt, foodName, foodPrice, category, description, isQuickServe, tags, imageUrl, calories, carbs } = req.body;
+        
+        // 1. Two separate flags!
+        let isCaloriesAiEstimated = 0; 
+        let isCarbsAiEstimated = 0; 
+
+        // 🤖 AI NUTRITION ESTIMATOR INTERCEPTOR
+        if (!calories || !carbs) {
+            console.log(`Asking AI to estimate missing macros for ${foodName}...`);
+            try {
+                const systemPrompt = `
+                    You are a nutrition expert. Estimate the nutritional values for a campus food item. 
+                    Respond ONLY with a valid JSON object containing "calories" (an integer) and "carbs" (an integer in grams). 
+                    Do not include any other text or markdown formatting. 
+                    Example: {"calories": 350, "carbs": 45}
+                `;
+                const userPrompt = `Food Name: ${foodName}\nCategory: ${category || 'Main Menu'}\nDesc: ${description || ''}`;
+
+                const aiRes = await askGPT(systemPrompt, userPrompt);
+                
+                const jsonMatch = aiRes.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    const aiData = JSON.parse(jsonMatch[0]);
+                    
+                    // 2. Only overwrite and flag if the specific field was blank!
+                    if (!calories) {
+                        calories = aiData.calories;
+                        isCaloriesAiEstimated = 1;
+                    }
+                    if (!carbs) {
+                        carbs = aiData.carbs;
+                        isCarbsAiEstimated = 1;
+                    }
+                    
+                    console.log(`🤖 AI injected: ${isCaloriesAiEstimated ? 'Calories ' : ''}${isCarbsAiEstimated ? 'Carbs' : ''}`);
+                }
+            } catch (e) {
+                console.error("AI estimation failed. Defaulting to 0.", e);
+                calories = calories || 0;
+                carbs = carbs || 0;
+            }
+        }
+
+        // 3. Update the INSERT statement to use the TWO new columns
+        const insertFoodQuery = `
+            INSERT INTO \`Food\` 
+            (\`servedAt\`, \`foodName\`, \`foodPrice\`, \`category\`, \`description\`, \`isQuickServe\`, \`imageUrl\`, \`calories\`, \`isCaloriesAiEstimated\`, \`carbs\`, \`isCarbsAiEstimated\`) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const [result] = await db.execute(insertFoodQuery, [
+            servedAt, 
+            foodName, 
+            foodPrice, 
+            category || 'Main Menu', 
+            description || '', 
+            isQuickServe || 0, 
+            imageUrl || null, 
+            calories || 0, 
+            isCaloriesAiEstimated, // Save the calorie flag
+            carbs || 0,
+            isCarbsAiEstimated     // Save the carb flag
+        ]);
+        const newFoodId = result.insertId;
+
+        // 3. ATTACH THE TAGS
+        if (tags && Array.isArray(tags)) {
+            for (let t of tags) {
+                const tagStr = t.toLowerCase().trim();
+                
+                // Find or create the tag
+                let [tagRows] = await db.execute('SELECT tagId FROM `Tags` WHERE tagName = ?', [tagStr]);
+                let tagId;
+                
+                if (tagRows.length === 0) {
+                    const [insertRes] = await db.execute('INSERT INTO `Tags` (tagName) VALUES (?)', [tagStr]);
+                    tagId = insertRes.insertId;
+                } else {
+                    tagId = tagRows[0].tagId;
+                }
+                
+                // Link tag to the newly created food item
+                await db.execute('INSERT INTO `Food_Tags` (foodId, tagId) VALUES (?, ?)', [newFoodId, tagId]);
+            }
+        }
+
+        res.status(201).json({ message: 'Food item created successfully!', foodId: newFoodId });
+
+    } catch (error) {
+        console.error('Error creating food:', error);
+        res.status(500).json({ error: 'Failed to create food item.' });
+    }
+});
+
+// ==========================================
 // STORES CRUD - READ (Fetch stores for a specific Seller)
 // ==========================================
 app.get('/api/stores/seller/:userId', async (req, res) => {
     try {
         const sellerId = req.params.userId;
+        // SELECT * grabs the storeName, location, isActive status, AND your new imageUrl!
         const query = 'SELECT * FROM `Stores` WHERE `storeManager` = ?';
         const [rows] = await db.execute(query, [sellerId]);
         res.status(200).json(rows);
@@ -270,67 +391,199 @@ app.get('/api/stores/seller/:userId', async (req, res) => {
 });
 
 // ==========================================
-// FOOD CRUD - CREATE (Add new food item)
+// STORES CRUD - READ SINGLE STORE (Public Front)
 // ==========================================
-app.post('/api/food', async (req, res) => {
+app.get('/api/stores/details/:storeId', async (req, res) => {
     try {
-        // 1. We removed 'foodId' here because the database generates it automatically!
-        const { 
-            servedAt, 
-            foodName, 
-            description, 
-            foodPrice, 
-            isQuickServe, 
-            carbs, 
-            calories, 
-            imageUrl 
-        } = req.body;
-
-        // 2. We removed 'foodId' from the required check
-        if (!servedAt || !foodName || !description || !foodPrice) {
-            return res.status(400).json({ error: 'Please provide all required food details.' });
-        }
-
-        // 3. We removed 'foodId' from the SQL query
-        const query = `
-            INSERT INTO \`Food\` 
-            (\`servedAt\`, \`foodName\`, \`description\`, \`foodPrice\`, \`isQuickServe\`, \`carbs\`, \`calories\`, \`imageUrl\`) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        // 4. Execute the query
-        await db.execute(query, [
-            servedAt, 
-            foodName, 
-            description, 
-            foodPrice, 
-            isQuickServe || 0,
-            carbs || 0.00, 
-            calories || 0.00, 
-            imageUrl || null
-        ]);
-
-        res.status(201).json({ message: 'Food item successfully added to the menu!' });
-
+        const [rows] = await db.execute('SELECT `storeId`, `storeName`, `storeLocation`, `imageUrl` FROM `Stores` WHERE `storeId` = ? AND `isActive` = 1', [req.params.storeId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Store not found or is suspended.' });
+        res.status(200).json(rows[0]);
     } catch (error) {
-        console.error('Error adding food:', error);
-        res.status(500).json({ error: 'Failed to add food item to the database.' });
+        res.status(500).json({ error: 'Failed to fetch store details.' });
     }
 });
 
 // ==========================================
-// FOOD CRUD - READ (Get Menu, Search, & Filters)
+// STORE CRUD - UPDATE (Edit, Suspend, Image)
 // ==========================================
-// Fetch foods served at a specific store
+app.put('/api/stores/:storeId', async (req, res) => {
+    try {
+        const { storeName, storeLocation, isActive, imageUrl } = req.body;
+        let updateFields = [];
+        let values = [];
+
+        if (storeName) { updateFields.push('`storeName` = ?'); values.push(storeName); }
+        if (storeLocation) { updateFields.push('`storeLocation` = ?'); values.push(storeLocation); }
+        if (isActive !== undefined) { updateFields.push('`isActive` = ?'); values.push(isActive); }
+        if (imageUrl !== undefined) { updateFields.push('`imageUrl` = ?'); values.push(imageUrl); }
+
+        if (updateFields.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+
+        const query = `UPDATE \`Stores\` SET ${updateFields.join(', ')} WHERE \`storeId\` = ?`;
+        values.push(req.params.storeId);
+
+        await db.execute(query, values);
+        res.status(200).json({ message: 'Store updated successfully.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to update store.' });
+    }
+});
+
+// ==========================================
+// STORE CRUD - DELETE (Wipes DB & Cloudinary)
+// ==========================================
+app.delete('/api/stores/:storeId', async (req, res) => {
+    try {
+        const targetId = req.params.storeId;
+
+        // 1. Fetch the store's Image URL before deleting
+        const [storeRows] = await db.execute('SELECT `imageUrl` FROM `Stores` WHERE `storeId` = ?', [targetId]);
+        if (storeRows.length === 0) return res.status(404).json({ error: 'Store not found.' });
+        const imageUrl = storeRows[0].imageUrl;
+
+        // 2. Delete the DB record
+        const [result] = await db.execute('DELETE FROM `Stores` WHERE `storeId` = ?', [targetId]);
+        
+        // 3. Delete from Cloudinary!
+        if (imageUrl && imageUrl.includes('cloudinary')) {
+            try {
+                const parts = imageUrl.split('/');
+                const filenameWithExt = parts.pop(); 
+                const folderName = parts.pop();      
+                const filename = filenameWithExt.split('.')[0]; 
+                await cloudinary.uploader.destroy(`${folderName}/${filename}`);
+                console.log('Store image vaporized from Cloudinary.');
+            } catch (cloudErr) {
+                console.error("Cloudinary store image deletion failed:", cloudErr);
+            }
+        }
+
+        res.status(200).json({ message: 'Store deleted successfully!' });
+    } catch (error) { res.status(500).json({ error: 'Failed to delete store.' }); }
+});
+
+// ==========================================
+// FOOD CRUD - UPDATE
+// ==========================================
+app.put('/api/food/:foodId', async (req, res) => {
+    try {
+        const { foodName, description, foodPrice, isQuickServe, tags, category, variations, imageUrl, calories, carbs } = req.body;
+        const foodId = req.params.foodId;
+
+        // 1. Build a dynamic update query based on what was sent
+        let updateFields = [
+            '`foodName` = ?', '`description` = ?', '`foodPrice` = ?', 
+            '`isQuickServe` = ?', '`category` = ?', '`calories` = ?', '`carbs` = ?'
+        ];
+        let values = [
+            foodName, description || '', foodPrice, 
+            isQuickServe, category || 'Main Menu', calories || 0, carbs || 0
+        ];
+
+        // Only update the image if a new one was actually uploaded
+        if (imageUrl) {
+            updateFields.push('`imageUrl` = ?');
+            values.push(imageUrl);
+        }
+
+        // Add the foodId to the end of the values array for the WHERE clause
+        values.push(foodId);
+
+        const updateQuery = `UPDATE \`Food\` SET ${updateFields.join(', ')} WHERE \`foodId\` = ?`;
+        await db.execute(updateQuery, values);
+
+        // 2. Update Tags
+        if (tags && Array.isArray(tags)) {
+            await db.execute('DELETE FROM `Food_Tags` WHERE `foodId` = ?', [foodId]);
+            for (let t of tags) {
+                const tagStr = t.toLowerCase().trim();
+                let [tagRows] = await db.execute('SELECT tagId FROM `Tags` WHERE tagName = ?', [tagStr]);
+                let tagId;
+                if (tagRows.length === 0) {
+                    const [insertRes] = await db.execute('INSERT INTO `Tags` (tagName) VALUES (?)', [tagStr]);
+                    tagId = insertRes.insertId;
+                } else {
+                    tagId = tagRows[0].tagId;
+                }
+                await db.execute('INSERT INTO `Food_Tags` (foodId, tagId) VALUES (?, ?)', [foodId, tagId]);
+            }
+        }
+
+        // 3. Update Variations
+        if (variations) {
+            await db.execute('DELETE FROM `Food_Variations` WHERE `foodId` = ?', [foodId]);
+            for (let v of variations) {
+                if (v.name && v.price) {
+                    await db.execute('INSERT INTO `Food_Variations` (`foodId`, `variationName`, `price`) VALUES (?, ?, ?)', [foodId, v.name, v.price]);
+                }
+            }
+        }
+
+        res.status(200).json({ message: 'Food item updated successfully.' });
+    } catch (error) {
+        console.error('Error updating food:', error);
+        res.status(500).json({ error: 'Failed to update food item.' });
+    }
+});
+
+// ==========================================
+// FOOD CRUD - READ BY STORE
+// ==========================================
 app.get('/api/food/store/:storeId', async (req, res) => {
     try {
-        const storeId = req.params.storeId;
-        const query = 'SELECT * FROM `Food` WHERE `servedAt` = ?';
-        const [rows] = await db.execute(query, [storeId]);
+        const query = `
+            SELECT 
+                f.*, 
+                (SELECT IFNULL(AVG(r.starRating), 0) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as avgRating,
+                (SELECT COUNT(r.reviewId) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as reviewCount,
+                GROUP_CONCAT(t.tagName SEPARATOR ',') as foodTags
+            FROM \`Food\` f
+            LEFT JOIN \`Food_Tags\` ft ON f.foodId = ft.foodId
+            LEFT JOIN \`Tags\` t ON ft.tagId = t.tagId
+            WHERE f.servedAt = ?
+            GROUP BY f.foodId
+        `;
+        const [rows] = await db.execute(query, [req.params.storeId]);
         res.status(200).json(rows);
     } catch (error) {
-        console.error('Error fetching store foods:', error);
-        res.status(500).json({ error: 'Failed to retrieve store menu.' });
+        console.error("Error fetching store menu:", error);
+        res.status(500).json({ error: 'Failed to fetch food items.' });
+    }
+});
+
+// ==========================================
+// FOOD CRUD - READ SINGLE ITEM (For Product Page)
+// ==========================================
+app.get('/api/food/item/:foodId', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                f.*, 
+                s.storeName, 
+                (SELECT IFNULL(AVG(r.starRating), 0) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as avgRating,
+                (SELECT COUNT(r.reviewId) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as reviewCount,
+                (SELECT GROUP_CONCAT(t.tagName SEPARATOR ',') 
+                 FROM \`Food_Tags\` ft 
+                 JOIN \`Tags\` t ON ft.tagId = t.tagId 
+                 WHERE ft.foodId = f.foodId) as foodTags
+            FROM \`Food\` f 
+            JOIN \`Stores\` s ON f.servedAt = s.storeId 
+            JOIN \`Users\` u ON s.storeManager = u.userId
+            WHERE f.foodId = ? AND s.isActive = 1 AND u.isActive = 1
+        `;
+        const [rows] = await db.execute(query, [req.params.foodId]);
+        
+        if (rows.length === 0) return res.status(404).json({ error: 'Food not found or store is suspended.' });
+
+        // Fetch Variations for this specific item (THIS WAS MISSING!)
+        const [varRows] = await db.execute('SELECT `variationId`, `variationName`, `price` FROM `Food_Variations` WHERE `foodId` = ?', [req.params.foodId]);
+        rows[0].variations = varRows;
+
+        res.status(200).json(rows[0]);
+    } catch (error) {
+        console.error("Error fetching single food item:", error);
+        res.status(500).json({ error: 'Failed to fetch food details.' });
     }
 });
 
@@ -368,98 +621,88 @@ app.get('/api/food', async (req, res) => {
 });
 
 // ==========================================
-// FOOD CRUD - UPDATE (Seller Menu Updates)
-// ==========================================
-app.put('/api/food/:foodId', async (req, res) => {
-    try {
-        const targetFoodId = req.params.foodId;
-        const { foodName, description, foodPrice, isQuickServe } = req.body;
-
-        // Build a dynamic update query based on what the seller changed
-        let query = 'UPDATE `Food` SET ';
-        const values = [];
-        const updates = [];
-
-        if (foodName) { updates.push('`foodName` = ?'); values.push(foodName); }
-        if (description) { updates.push('`description` = ?'); values.push(description); }
-        if (foodPrice) { updates.push('`foodPrice` = ?'); values.push(foodPrice); }
-        if (isQuickServe !== undefined) { updates.push('`isQuickServe` = ?'); values.push(isQuickServe); }
-
-        // If nothing was sent to update, stop here
-        if (updates.length === 0) {
-            return res.status(400).json({ error: 'No data provided to update.' });
-        }
-
-        query += updates.join(', ') + ' WHERE `foodId` = ?';
-        values.push(targetFoodId);
-
-        const [result] = await db.execute(query, values);
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Food item not found.' });
-        }
-
-        res.status(200).json({ message: 'Menu item updated successfully!' });
-    } catch (error) {
-        console.error('Error updating food:', error);
-        res.status(500).json({ error: 'Failed to update menu item.' });
-    }
-});
-
-// ==========================================
 // FOOD CRUD - SMART FEED (Personalized Recommendations)
 // ==========================================
 app.get('/api/food/smart-feed/:userId', async (req, res) => {
     try {
         const userId = req.params.userId;
 
-        // 1. Fetch the user's specific preferences
         const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
         
         let userBudget = null;
         let userTags = [];
+        let userDislikes = []; // NEW: Array for things they hate!
 
         prefs.forEach(p => {
             if (p.preferenceType === 'BUDGET') userBudget = parseFloat(p.maxBudget);
             if (p.preferenceType === 'TAG') userTags.push(p.description.toLowerCase());
-            // Note: In a future update, we can split TAG into LIKE and DISLIKE to penalize scores!
+            if (p.preferenceType === 'DISLIKE') userDislikes.push(p.description.toLowerCase()); // NEW!
         });
 
-        // 2. Fetch the entire active menu
-        const [foods] = await db.execute('SELECT * FROM `Food`');
+        // BULLETPROOF QUERY: Filters out Suspended Stores and Managers!
+        // BULLETPROOF QUERY: Filters out Suspended Stores and Managers!
+        const menuQuery = `
+            SELECT 
+                f.*, 
+                s.storeName,
+                (SELECT IFNULL(AVG(r.starRating), 0) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as avgRating,
+                (SELECT COUNT(r.reviewId) FROM \`Reviews\` r WHERE r.foodId = f.foodId) as reviewCount,
+                (SELECT GROUP_CONCAT(t.tagName SEPARATOR ',') 
+                 FROM \`Food_Tags\` ft 
+                 JOIN \`Tags\` t ON ft.tagId = t.tagId 
+                 WHERE ft.foodId = f.foodId) as foodTags
+            FROM \`Food\` f
+            JOIN \`Stores\` s ON f.servedAt = s.storeId
+            JOIN \`Users\` u ON s.storeManager = u.userId
+            WHERE s.isActive = 1 AND u.isActive = 1
+        `;
+        const [foods] = await db.execute(menuQuery); 
+        if (foods.length === 0) return res.status(200).json({ recommended: [], all: [] });
 
-        // 3. The Match Scoring Engine
         const rankedFoods = foods.map(food => {
             let score = 0;
             let matchReasons = [];
-            const searchString = `${food.foodName} ${food.description}`.toLowerCase();
+            const searchString = `${food.foodName} ${food.description} ${food.foodTags || ''}`.toLowerCase();
 
-            // Rule A: Is it under budget?
             if (userBudget && parseFloat(food.foodPrice) <= userBudget) {
                 score += 10;
                 matchReasons.push('Under Budget');
             }
 
-            // Rule B: Does it match their flavor profile/tags?
+            // Reward Likes
             userTags.forEach(tag => {
                 if (searchString.includes(tag)) {
-                    score += 20; // High priority for exact taste matches
+                    score += 20; 
                     matchReasons.push(`Matches: ${tag}`);
                 }
             });
 
-            return { 
-                ...food, 
-                matchScore: score, 
-                matchReasons: matchReasons 
-            };
+            // PENALIZE DISLIKES!
+            userDislikes.forEach(dislike => {
+                if (searchString.includes(dislike)) {
+                    score -= 100; // Massive penalty so it drops to the bottom!
+                    matchReasons.push(`Contains: ${dislike} (Avoid)`);
+                }
+            });
+
+            // 🌟 REAL "Campus Favorite" Logic: Must have a high rating or lots of reviews!
+            if (parseFloat(food.avgRating) >= 4.0 || parseInt(food.reviewCount) >= 3) {
+                score += 15; // Give it a massive boost so it floats to the top
+                matchReasons.push('Campus Favorite');
+            } 
+            
+            // 🛑 The Fallback: If the user has zero preferences, just give items a tiny base score 
+            // so the feed isn't empty, but DO NOT add a misleading tag!
+            if (prefs.length === 0 && matchReasons.length === 0) {
+                score += 1; 
+            }
+
+            return { ...food, matchScore: score, matchReasons: matchReasons };
         });
 
-        // 4. Sort the menu from highest score to lowest
         rankedFoods.sort((a, b) => b.matchScore - a.matchScore);
 
-        // 5. Split the results into "Highly Recommended" and "The Rest"
-        const recommended = rankedFoods.filter(f => f.matchScore >= 10);
+        const recommended = prefs.length === 0 ? rankedFoods.slice(0, 5) : rankedFoods.filter(f => f.matchScore >= 10);
         
         res.status(200).json({
             budget: userBudget,
@@ -475,20 +718,46 @@ app.get('/api/food/smart-feed/:userId', async (req, res) => {
 });
 
 // ==========================================
-// FOOD CRUD - DELETE (Seller removes food)
+// FOOD CRUD - DELETE (Seller removes food & image)
 // ==========================================
 app.delete('/api/food/:foodId', async (req, res) => {
     try {
         const targetFoodId = req.params.foodId;
 
-        const query = 'DELETE FROM `Food` WHERE `foodId` = ?';
-        const [result] = await db.execute(query, [targetFoodId]);
-
-        if (result.affectedRows === 0) {
+        // 1. Fetch the food item first to get its Image URL
+        const [foodRows] = await db.execute('SELECT `imageUrl` FROM `Food` WHERE `foodId` = ?', [targetFoodId]);
+        
+        if (foodRows.length === 0) {
             return res.status(404).json({ error: 'Food item not found.' });
         }
 
-        res.status(200).json({ message: 'Food item removed from the menu.' });
+        const imageUrl = foodRows[0].imageUrl;
+
+        // 2. Delete the database record
+        const query = 'DELETE FROM `Food` WHERE `foodId` = ?';
+        await db.execute(query, [targetFoodId]);
+
+        // 3. Delete the image from Cloudinary (if it exists)
+        if (imageUrl && imageUrl.includes('cloudinary')) {
+            try {
+                // Cloudinary URLs look like: .../upload/v12345/nearbites_food/abcde.jpg
+                // We need to extract: nearbites_food/abcde
+                const parts = imageUrl.split('/');
+                const filenameWithExt = parts.pop(); // "abcde.jpg"
+                const folderName = parts.pop();      // "nearbites_food"
+                const filename = filenameWithExt.split('.')[0]; // "abcde"
+                
+                const publicId = `${folderName}/${filename}`;
+                
+                // Tell Cloudinary to vaporize it
+                await cloudinary.uploader.destroy(publicId);
+                console.log(`Successfully deleted image from Cloudinary: ${publicId}`);
+            } catch (cloudErr) {
+                console.error("Cloudinary deletion failed, but DB record was deleted:", cloudErr);
+            }
+        }
+
+        res.status(200).json({ message: 'Food item and image permanently removed.' });
     } catch (error) {
         console.error('Error deleting food:', error);
         res.status(500).json({ error: 'Failed to delete food item.' });
@@ -500,17 +769,18 @@ app.delete('/api/food/:foodId', async (req, res) => {
 // ==========================================
 app.post('/api/preferences', async (req, res) => {
     try {
-        // preferenceType could be 'DIET', 'ALLERGY', or 'BUDGET'
-        const { userId, preferenceType, tagId, ingredientId, maxBudget } = req.body;
+        // ADDED 'description' to the destructured body!
+        const { userId, preferenceType, tagId, ingredientId, maxBudget, description } = req.body;
 
         if (!userId || !preferenceType) {
             return res.status(400).json({ error: 'User ID and Preference Type are required.' });
         }
 
+        // ADDED 'description' to the SQL Insert query!
         const query = `
             INSERT INTO \`Preferences\` 
-            (\`userId\`, \`preferenceType\`, \`tagId\`, \`ingredientId\`, \`maxBudget\`) 
-            VALUES (?, ?, ?, ?, ?)
+            (\`userId\`, \`preferenceType\`, \`tagId\`, \`ingredientId\`, \`maxBudget\`, \`description\`) 
+            VALUES (?, ?, ?, ?, ?, ?)
         `;
 
         await db.execute(query, [
@@ -518,7 +788,8 @@ app.post('/api/preferences', async (req, res) => {
             preferenceType, 
             tagId || null, 
             ingredientId || null, 
-            maxBudget || null
+            maxBudget || null,
+            description || null
         ]);
 
         res.status(201).json({ message: 'Preference saved successfully!' });
@@ -568,25 +839,35 @@ app.delete('/api/preferences/:preferenceId', async (req, res) => {
 });
 
 // ==========================================
-// REVIEWS CRUD - CREATE (Leave a Star Review)
+// REVIEWS CRUD - CREATE OR UPDATE (1 Per User)
 // ==========================================
 app.post('/api/reviews', async (req, res) => {
     try {
         const { userId, foodId, starRating } = req.body;
 
-        // Validation to ensure all required fields are provided
         if (!userId || !foodId || starRating === undefined) {
-            return res.status(400).json({ error: 'User ID, Food ID, and Star Rating are required.' });
+            return res.status(400).json({ error: 'Missing data.' });
         }
 
-        // Insert the review into the database
-        const query = 'INSERT INTO `Reviews` (`userId`, `foodId`, `starRating`) VALUES (?, ?, ?)';
-        await db.execute(query, [userId, foodId, starRating]);
+        // 1. Check if this user has already reviewed this exact food item
+        const checkQuery = 'SELECT `reviewId` FROM `Reviews` WHERE `userId` = ? AND `foodId` = ?';
+        const [existing] = await db.execute(checkQuery, [userId, foodId]);
 
-        res.status(201).json({ message: 'Thank you for your review!' });
-    } catch (error) {
-        console.error('Error saving review:', error);
-        res.status(500).json({ error: 'Failed to submit review.' });
+        if (existing.length > 0) {
+            // 2. If a review exists, UPDATE the stars
+            const updateQuery = 'UPDATE `Reviews` SET `starRating` = ? WHERE `reviewId` = ?';
+            await db.execute(updateQuery, [starRating, existing[0].reviewId]);
+            return res.status(200).json({ message: 'Review updated successfully!' });
+        } else {
+            // 3. If no review exists, INSERT a new one
+            const insertQuery = 'INSERT INTO `Reviews` (`userId`, `foodId`, `starRating`) VALUES (?, ?, ?)';
+            await db.execute(insertQuery, [userId, foodId, starRating]);
+            return res.status(201).json({ message: 'Review saved! Thank you.' });
+        }
+
+    } catch (error) { 
+        console.error('Review Error:', error);
+        res.status(500).json({ error: 'Failed to submit review.' }); 
     }
 });
 
@@ -614,56 +895,76 @@ app.get('/api/reviews/food/:foodId', async (req, res) => {
 });
 
 // ==========================================
-// AI FEATURES - FOOD BUNDLE RECOMMENDATION
+// AI - 3. FOOD BUNDLE (Bulletproof Parsing & Flexible Pairs)
 // ==========================================
 app.post('/api/ai/recommend-bundle', async (req, res) => {
     try {
-        const { foodName } = req.body;
+        const { userId, foodName, customBudget, goal, minStars } = req.body;
+        if (!userId) return res.status(400).json({ error: 'User ID missing.' });
 
-        if (!foodName) {
-            return res.status(400).json({ error: 'Please provide a food name.' });
-        }
-
-        // 1. NEW: Fetch the actual menu from the database!
-        // We exclude the food they clicked on so it doesn't pair a burger with a burger.
-        const [menuItems] = await db.execute('SELECT `foodName`, `description` FROM `Food` WHERE `foodName` != ?', [foodName]);
+        const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
+        let userBudget = customBudget || prefs.find(p => p.preferenceType === 'BUDGET')?.maxBudget;
         
-        // If the menu is empty (except for the item itself), handle it gracefully
-        if (menuItems.length === 0) {
-             return res.status(200).json({ 
-                 food: foodName, 
-                 recommendation: "There aren't enough items on the menu to recommend a pairing right now! Check back later." 
-             });
-        }
+        const prefTags = prefs.filter(p => p.preferenceType === 'TAG').map(p => p.description).join(', ');
+        const dislikes = prefs.filter(p => p.preferenceType === 'DISLIKE').map(p => p.description).join(', ');
         
-        const menuString = JSON.stringify(menuItems);
+        const ratingThreshold = Number(minStars) || 0;
 
-        // 2. UPGRADED: Strict System Prompt locking the AI to your database
+        const [menuItems] = await db.execute(`
+            SELECT f.foodId, f.foodName, f.description, f.foodPrice, IFNULL(AVG(r.starRating), 0) AS averageRating 
+            FROM \`Food\` f 
+            LEFT JOIN \`Reviews\` r ON f.foodId = r.foodId 
+            WHERE f.foodName != ?
+            GROUP BY f.foodId
+            HAVING averageRating >= ?
+        `, [foodName, ratingThreshold]);
+
+        if (menuItems.length === 0) return res.status(200).json({ food: foodName, recommendation: "Not enough items match your criteria to pair!" });
+        
         const systemPrompt = `
-            You are an expert culinary AI assistant for the LPU-C Nearbites application. 
-            The user wants a pairing for a specific food. 
-            I will provide you with the current menu of available items.
-            You MUST recommend ONE beverage or side dish that pairs well with the user's food, 
-            and your recommendation MUST be chosen STRICTLY from the provided menu list.
-            Keep your response short, engaging, and explain briefly why they pair well together.
-            Do not use markdown formatting. If nothing on the menu pairs perfectly, just pick the best possible option available.
+            You are a culinary AI. Recommend 1 or 2 complementary items from the menu to pair with the Target Food: ${foodName}.
+            
+            PROFILE:
+            - Craving: ${goal || 'Complement the meal'}
+            - Preferences: ${prefTags || 'None'}
+            - Budget: PHP ${userBudget || 'Unlimited'}
+            - ALLERGIES / DISLIKES: ${dislikes || 'None'}
+            
+            RULES:
+            1. NEVER recommend anything containing the user's Allergies/Dislikes.
+            2. Pick 1 to 2 items from the provided menu array.
+            3. Output valid JSON only.
+            
+            FORMAT EXACTLY LIKE THIS:
+            {
+              "foodIds": [integer, integer],
+              "pitch": "Short pitch here"
+            }
         `;
+        
+        const aiResponse = await askGPT(systemPrompt, `Menu: ${JSON.stringify(menuItems)}`);
+        
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI did not return valid JSON.");
+        const parsedData = JSON.parse(jsonMatch[0]);
 
-        // 3. UPGRADED: Pass the menu to the AI along with the food name
-        const userPrompt = `Target Food: ${foodName}\n\nAvailable Menu to choose from: ${menuString}`;
+        // BULLETPROOF ID PARSING: Catches singular, plural, and weird AI formatting!
+        let rawIds = parsedData.foodIds || parsedData.foodId || parsedData.ids || [];
+        if (!Array.isArray(rawIds)) rawIds = [rawIds];
+        const validIds = rawIds.filter(id => !isNaN(id) && id !== null);
 
-        // 4. Send the request to OpenRouter!
-        const aiResponse = await askGPT(systemPrompt, userPrompt);
+        let foodDetails = [];
+        if (validIds.length > 0) {
+            const placeholders = validIds.map(() => '?').join(',');
+            const query = `SELECT f.foodId, f.foodName, f.foodPrice, f.imageUrl, s.storeName FROM \`Food\` f JOIN \`Stores\` s ON f.servedAt = s.storeId WHERE f.foodId IN (${placeholders})`;
+            const [rows] = await db.execute(query, validIds);
+            foodDetails = rows;
+        }
 
-        // 5. Send the AI's brilliant, database-aware idea back to the frontend
-        res.status(200).json({ 
-            food: foodName,
-            recommendation: aiResponse 
-        });
-
-    } catch (error) {
-        console.error('Error generating bundle recommendation:', error);
-        res.status(500).json({ error: 'Failed to generate recommendation.' });
+        res.status(200).json({ food: foodName, recommendation: parsedData.pitch || "Great pairing!", foods: foodDetails });
+    } catch (error) { 
+        console.error("Pairing Error:", error);
+        res.status(500).json({ error: 'Failed to generate pairing.' }); 
     }
 });
 
@@ -714,140 +1015,306 @@ app.post('/api/ai/estimate-macros', async (req, res) => {
 });
 
 // ==========================================
-// AI FEATURES - WEEKLY MEAL PLANNER
+// AI - 2. WEEKLY MEAL PLANNER (No-Math Array Version)
 // ==========================================
 app.post('/api/ai/generate-meal-plan', async (req, res) => {
     try {
-        const { userId, startDate } = req.body;
+        const { userId, startDate, goal, schedule, customBudget, minStars } = req.body;
+        if (!userId || !startDate) return res.status(400).json({ error: 'User ID and Start Date required.' });
 
-        if (!userId || !startDate) {
-            return res.status(400).json({ error: 'User ID and Start Date are required.' });
+        const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
+        const prefTags = prefs.filter(p => p.preferenceType === 'TAG').map(p => p.description).join(', ');
+
+        const ratingThreshold = Number(minStars) || 0;
+        const menuQuery = `
+            SELECT f.foodId, f.foodName, f.description, f.foodPrice, IFNULL(AVG(r.starRating), 0) AS averageRating 
+            FROM \`Food\` f 
+            LEFT JOIN \`Reviews\` r ON f.foodId = r.foodId 
+            GROUP BY f.foodId
+            HAVING averageRating >= ?
+        `;
+        const [foodItems] = await db.execute(menuQuery, [ratingThreshold]);
+        
+        if (foodItems.length === 0) {
+            return res.status(400).json({ error: 'No food items meet this star rating to create a meal plan.' });
         }
 
-        // 1. Get the menu so the AI knows what food is actually available
-        const [foodItems] = await db.execute('SELECT `foodId`, `foodName`, `description` FROM `Food`');
-        const menuString = JSON.stringify(foodItems);
-
-        // 2. Get the user's preferences (diet, budget, etc.)
-        const [preferences] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
-        const prefString = JSON.stringify(preferences);
-
-        // 3. Give the AI strict instructions to act as a planner
+        // We removed the JSON wrapper and math requirements!
         const systemPrompt = `
-            You are an expert meal planner for the LPU-C Nearbites app.
-            I will provide you with the current menu and the user's preferences.
-            Create a 7-day meal plan using ONLY the food items from the provided menu.
-            Return ONLY a valid JSON array of objects. Do not use markdown blocks.
-            Format exactly like this:
+            You are a meal plan data generator.
+            
+            PROFILE:
+            - Goal: ${goal || 'Balanced Diet'}
+            - Tags: ${prefTags || 'None'}
+            - Schedule: ${schedule}
+            - Budget Target: PHP ${customBudget || 'Unlimited'}
+            
+            CRITICAL RULES:
+            1. Look at the Schedule. You MUST generate exactly one JSON object for EVERY single meal requested.
+            2. DO NOT calculate the total cost. I will do that. Just pick cheap items if the budget is low.
+            3. REPEAT items if necessary to fill every single slot.
+            4. Return ONLY a flat JSON array. NO wrappers, NO text.
+            
+            FORMAT EXACTLY LIKE THIS ARRAY:
             [
-              {"dayOfWeek": 1, "mealType": "Lunch", "foodId": 5},
-              {"dayOfWeek": 1, "mealType": "Beverage", "foodId": 12}
+              {"dayOfWeek": 1, "mealType": "Breakfast", "foodId": 5},
+              {"dayOfWeek": 1, "mealType": "Lunch", "foodId": 12},
+              {"dayOfWeek": 2, "mealType": "Dinner", "foodId": 8}
             ]
         `;
 
-        const userPrompt = `Menu: ${menuString}\nUser Preferences: ${prefString}`;
-
-        // 4. Send to OpenRouter / Qwen
-        const aiResponseText = await askGPT(systemPrompt, userPrompt);
+        const aiResponseText = await askGPT(systemPrompt, `Menu: ${JSON.stringify(foodItems)}`);
         
-        // Parse the AI's text into a real JavaScript array
-        const mealPlanData = JSON.parse(aiResponseText);
+        // Grab only the array using regex
+        const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error("AI did not return a valid JSON array.");
 
-        // 5. Save the overarching Meal Plan to the database
+        const mealPlanData = JSON.parse(jsonMatch[0]);
+        if (!Array.isArray(mealPlanData) || mealPlanData.length === 0) throw new Error("Empty array returned.");
+
         const planQuery = 'INSERT INTO `MealPlans` (`userId`, `planName`, `startDate`) VALUES (?, ?, ?)';
         const [planResult] = await db.execute(planQuery, [userId, 'AI Generated Weekly Plan', startDate]);
-        const newPlanId = planResult.insertId; // Grab the newly generated planId
+        const newPlanId = planResult.insertId;
 
-        // 6. Save every single meal entry to the database
+        let itemsAdded = 0;
+        let manualCost = 0; // We do the math here now!
+
         for (const entry of mealPlanData) {
-            const entryQuery = 'INSERT INTO `MealPlanEntries` (`planId`, `foodId`, `dayOfWeek`, `mealType`) VALUES (?, ?, ?, ?)';
-            await db.execute(entryQuery, [newPlanId, entry.foodId, entry.dayOfWeek, entry.mealType]);
+            const fId = entry.foodId || entry.food_id || entry.id || entry.food;
+            const dOw = entry.dayOfWeek || entry.day_of_week || entry.day;
+            const mType = entry.mealType || entry.meal_type || entry.type || entry.meal;
+
+            if(fId && dOw && mType) {
+                // Calculate the true cost using your backend database, not the AI
+                const matchedFood = foodItems.find(f => f.foodId == fId);
+                if (matchedFood) manualCost += Number(matchedFood.foodPrice);
+
+                const entryQuery = 'INSERT INTO `MealPlanEntries` (`planId`, `foodId`, `dayOfWeek`, `mealType`) VALUES (?, ?, ?, ?)';
+                await db.execute(entryQuery, [newPlanId, fId, dOw, mType]);
+                itemsAdded++;
+            }
         }
 
-        res.status(201).json({ 
-            message: 'Weekly meal plan successfully generated and saved!',
-            planId: newPlanId,
-            totalMealsAssigned: mealPlanData.length
-        });
+        if (itemsAdded === 0) {
+            await db.execute('DELETE FROM `MealPlans` WHERE `planId` = ?', [newPlanId]);
+            return res.status(500).json({ error: 'AI failed to format the schedule correctly. Please try again.' });
+        }
 
+        res.status(201).json({ message: `Plan generated! Estimated Total: ₱${manualCost.toFixed(2)}`, planId: newPlanId });
     } catch (error) {
         console.error('Error generating meal plan:', error);
-        res.status(500).json({ error: 'Failed to generate meal plan. The AI may have misunderstood the menu format.' });
+        res.status(500).json({ error: 'AI failed to adhere to formatting. Try again.' });
     }
 });
 
 // ==========================================
-// AI FEATURES - BUDGET PREFERENCE (UPDATED)
+// AI - 1. QUICK MEAL IDEA (Now Supports Combos & Allergies!)
 // ==========================================
-app.post('/api/ai/recommend-by-budget', async (req, res) => {
+app.post('/api/ai/recommend-quick-meal', async (req, res) => {
     try {
-        const { userId, customBudget } = req.body;
-
+        const { userId, customBudget, goal, minStars } = req.body;
         if (!userId) return res.status(400).json({ error: 'User ID is required.' });
 
-        let userBudget = customBudget; // Use the typed budget if they provided one!
+        const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
+        let userBudget = customBudget || prefs.find(p => p.preferenceType === 'BUDGET')?.maxBudget;
+        
+        // STRICT PREFERENCE EXTRACTION
+        const prefTags = prefs.filter(p => p.preferenceType === 'TAG').map(p => p.description).join(', ');
+        const dislikes = prefs.filter(p => p.preferenceType === 'DISLIKE').map(p => p.description).join(', ');
 
-        // If they left it blank, fallback to their profile budget
-        if (!userBudget) {
-            const queryPref = 'SELECT `maxBudget` FROM `Preferences` WHERE `userId` = ? AND `maxBudget` IS NOT NULL LIMIT 1';
-            const [prefs] = await db.execute(queryPref, [userId]);
-            if (prefs.length === 0) {
-                return res.status(404).json({ error: 'No budget provided and no saved preference found.' });
-            }
-            userBudget = prefs[0].maxBudget;
-        }
-
-        const queryMenu = 'SELECT `foodName`, `description`, `foodPrice` FROM `Food`';
-        const [menu] = await db.execute(queryMenu);
-        const menuString = JSON.stringify(menu);
+        const ratingThreshold = Number(minStars) || 0;
+        
+        const menuQuery = `
+            SELECT f.foodId, f.foodName, f.description, f.foodPrice, IFNULL(AVG(r.starRating), 0) AS averageRating 
+            FROM \`Food\` f 
+            LEFT JOIN \`Reviews\` r ON f.foodId = r.foodId 
+            GROUP BY f.foodId
+            HAVING averageRating >= ?
+        `;
+        const [menu] = await db.execute(menuQuery, [ratingThreshold]);
+        if (menu.length === 0) return res.status(200).json({ recommendation: "No food items meet this criteria right now." });
 
         const systemPrompt = `
-            You are a helpful, budget-conscious culinary AI for LPU-C Nearbites.
-            The user has a strict maximum budget of PHP ${userBudget}.
-            I will provide you with the current menu and prices.
-            Recommend a great meal combination or a single hearty item that stays strictly UNDER or EQUAL TO their budget.
-            Briefly explain why it's a great choice and tell them the total estimated cost. Keep it short.
+            You are a culinary AI for LPU-C Nearbites.
+            
+            PROFILE:
+            - Goal: ${goal || 'Anything delicious'}
+            - Preferences/Likes: ${prefTags || 'None'}
+            - Budget: PHP ${userBudget || 'Unlimited'}
+            - ALLERGIES / DISLIKES: ${dislikes || 'None'}
+            
+            CRITICAL RULES:
+            1. NEVER recommend anything containing the user's Allergies/Dislikes.
+            2. Pick 1 to 3 items from the menu to create a complete meal combo (e.g., Main + Side/Drink).
+            3. The TOTAL combined price MUST be <= PHP ${userBudget || 999999}.
+            4. Output MUST be valid JSON.
+            
+            FORMAT EXACTLY LIKE THIS:
+            {
+              "foodIds": [<insert integer foodIds here as an array>],
+              "pitch": "<insert your short explanation here>"
+            }
         `;
 
-        const aiResponseText = await askGPT(systemPrompt, `Menu: ${menuString}`);
+        const aiResponseText = await askGPT(systemPrompt, `Menu: ${JSON.stringify(menu)}`);
+        
+        const jsonMatch = aiResponseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI did not return valid JSON.");
+        const parsedData = JSON.parse(jsonMatch[0]);
 
-        res.status(200).json({ budget: userBudget, recommendation: aiResponseText });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to generate budget recommendation.' });
-    }
+        let foodDetails = [];
+        if (parsedData.foodIds && parsedData.foodIds.length > 0) {
+            // Safely query multiple food items at once!
+            const placeholders = parsedData.foodIds.map(() => '?').join(',');
+            const query = `SELECT f.foodId, f.foodName, f.foodPrice, f.imageUrl, s.storeName FROM \`Food\` f JOIN \`Stores\` s ON f.servedAt = s.storeId WHERE f.foodId IN (${placeholders})`;
+            const [rows] = await db.execute(query, parsedData.foodIds);
+            foodDetails = rows;
+        }
+
+        res.status(200).json({ budget: userBudget, recommendation: parsedData.pitch, foods: foodDetails });
+    } catch (error) { res.status(500).json({ error: 'Failed to generate recommendation.' }); }
 });
 
 // ==========================================
-// MEAL PLAN - READ (Fetch User's Latest Plan)
+// AI - 3. FOOD BUNDLE (Now Supports Pair Parameters!)
 // ==========================================
-app.get('/api/mealplans/user/:userId', async (req, res) => {
+app.post('/api/ai/recommend-bundle', async (req, res) => {
     try {
-        const userId = req.params.userId;
-        
-        // 1. Get the most recent plan this user generated
-        const [plans] = await db.execute('SELECT * FROM `MealPlans` WHERE `userId` = ? ORDER BY `planId` DESC LIMIT 1', [userId]);
-        
-        if (plans.length === 0) {
-            return res.status(404).json({ error: 'No meal plan found. Generate one with the AI!' });
-        }
-        
-        const planId = plans[0].planId;
+        const { userId, foodName, customBudget, goal, minStars } = req.body;
+        if (!userId) return res.status(400).json({ error: 'User ID missing.' });
 
-        // 2. Fetch all the food entries for that plan
-        const query = `
-            SELECT e.dayOfWeek, e.mealType, f.foodName, f.foodPrice 
-            FROM \`MealPlanEntries\` e
-            JOIN \`Food\` f ON e.foodId = f.foodId
-            WHERE e.planId = ?
-            ORDER BY e.dayOfWeek ASC
+        const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
+        let userBudget = customBudget || prefs.find(p => p.preferenceType === 'BUDGET')?.maxBudget;
+        
+        const prefTags = prefs.filter(p => p.preferenceType === 'TAG').map(p => p.description).join(', ');
+        const dislikes = prefs.filter(p => p.preferenceType === 'DISLIKE').map(p => p.description).join(', ');
+        
+        const ratingThreshold = Number(minStars) || 0;
+
+        const [menuItems] = await db.execute(`
+            SELECT f.foodId, f.foodName, f.description, f.foodPrice, IFNULL(AVG(r.starRating), 0) AS averageRating 
+            FROM \`Food\` f 
+            LEFT JOIN \`Reviews\` r ON f.foodId = r.foodId 
+            WHERE f.foodName != ?
+            GROUP BY f.foodId
+            HAVING averageRating >= ?
+        `, [foodName, ratingThreshold]);
+
+        if (menuItems.length === 0) return res.status(200).json({ food: foodName, recommendation: "Not enough items match your criteria to pair!" });
+        
+        const systemPrompt = `
+            You are a culinary AI. Recommend 1 or 2 items to pair with: ${foodName}.
+            
+            PROFILE:
+            - Craving: ${goal || 'Complement the meal'}
+            - Preferences: ${prefTags || 'None'}
+            - Budget: PHP ${userBudget || 'Unlimited'}
+            - ALLERGIES / DISLIKES: ${dislikes || 'None'}
+            
+            RULES:
+            1. NEVER recommend anything containing the user's Allergies/Dislikes.
+            2. Pick 1 to 2 items (like a side and/or a beverage) <= PHP ${userBudget || 999999}.
+            3. Output valid JSON only.
+            
+            FORMAT EXACTLY LIKE THIS:
+            {
+              "foodIds": [<insert integer foodIds here as an array>],
+              "pitch": "<insert your short pitch here>"
+            }
         `;
-        const [entries] = await db.execute(query, [planId]);
+        
+        const aiResponse = await askGPT(systemPrompt, `Menu: ${JSON.stringify(menuItems)}`);
+        
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI did not return valid JSON.");
+        const parsedData = JSON.parse(jsonMatch[0]);
 
-        res.status(200).json({ plan: plans[0], entries });
-    } catch (error) {
-        console.error('Error fetching meal plan:', error);
-        res.status(500).json({ error: 'Failed to fetch meal plan.' });
-    }
+        let foodDetails = [];
+        if (parsedData.foodIds && parsedData.foodIds.length > 0) {
+            const placeholders = parsedData.foodIds.map(() => '?').join(',');
+            const query = `SELECT f.foodId, f.foodName, f.foodPrice, f.imageUrl, s.storeName FROM \`Food\` f JOIN \`Stores\` s ON f.servedAt = s.storeId WHERE f.foodId IN (${placeholders})`;
+            const [rows] = await db.execute(query, parsedData.foodIds);
+            foodDetails = rows;
+        }
+
+        res.status(200).json({ food: foodName, recommendation: parsedData.pitch, foods: foodDetails });
+    } catch (error) { res.status(500).json({ error: 'Failed to generate pairing.' }); }
+});
+
+// ==========================================
+// AI - 2. WEEKLY MEAL PLANNER (Now Supports Multi-Item Meals!)
+// ==========================================
+app.post('/api/ai/generate-meal-plan', async (req, res) => {
+    try {
+        const { userId, startDate, goal, schedule, customBudget, minStars } = req.body;
+        if (!userId || !startDate) return res.status(400).json({ error: 'User ID and Start Date required.' });
+
+        const [prefs] = await db.execute('SELECT * FROM `Preferences` WHERE `userId` = ?', [userId]);
+        const prefTags = prefs.filter(p => p.preferenceType === 'TAG').map(p => p.description).join(', ');
+        const dislikes = prefs.filter(p => p.preferenceType === 'DISLIKE').map(p => p.description).join(', ');
+
+        const ratingThreshold = Number(minStars) || 0;
+        const menuQuery = `
+            SELECT f.foodId, f.foodName, f.description, f.foodPrice, IFNULL(AVG(r.starRating), 0) AS averageRating 
+            FROM \`Food\` f 
+            LEFT JOIN \`Reviews\` r ON f.foodId = r.foodId 
+            GROUP BY f.foodId
+            HAVING averageRating >= ?
+        `;
+        const [foodItems] = await db.execute(menuQuery, [ratingThreshold]);
+        if (foodItems.length === 0) return res.status(400).json({ error: 'No food items meet this star rating to create a meal plan.' });
+
+        const systemPrompt = `
+            You are a backend API that generates meal plans. You MUST return a full JSON object.
+            
+            USER SETTINGS:
+            - Goal: ${goal || 'Balanced Diet'}
+            - Preferences: ${prefTags || 'None'}
+            - Budget: PHP ${customBudget || 'Unlimited'}
+            - ALLERGIES / DISLIKES: ${dislikes || 'None'}
+            
+            REQUIRED SCHEDULE:
+            ${schedule}
+            
+            CRITICAL INSTRUCTIONS:
+            1. NEVER recommend anything containing the user's Allergies/Dislikes.
+            2. For EVERY SINGLE MEAL listed in the schedule, you can suggest 1 to 3 items (e.g., Main + Drink) by creating multiple JSON entries with the same dayOfWeek and mealType.
+            3. Output ONLY valid JSON.
+            
+            JSON FORMAT EXACTLY LIKE THIS:
+            {
+              "calculatedTotalCost": <insert total number here>,
+              "entries": [
+                {"dayOfWeek": <insert day integer here>, "mealType": "<insert meal string here>", "foodId": <insert food integer here>}
+              ]
+            }
+        `;
+
+        const aiResponseText = await askGPT(systemPrompt, `Menu: ${JSON.stringify(foodItems)}`);
+        
+        const jsonMatch = aiResponseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI did not return a valid JSON object.");
+
+        const parsedData = JSON.parse(jsonMatch[0]);
+        const mealPlanData = parsedData.entries || parsedData.mealPlan || parsedData || []; 
+
+        if (!Array.isArray(mealPlanData) || mealPlanData.length === 0) {
+            throw new Error("AI did not format the entries array correctly.");
+        }
+
+        const planQuery = 'INSERT INTO `MealPlans` (`userId`, `planName`, `startDate`) VALUES (?, ?, ?)';
+        const [planResult] = await db.execute(planQuery, [userId, 'AI Generated Weekly Plan', startDate]);
+        const newPlanId = planResult.insertId;
+
+        for (const entry of mealPlanData) {
+            if(entry.foodId && entry.dayOfWeek && entry.mealType) {
+                const entryQuery = 'INSERT INTO `MealPlanEntries` (`planId`, `foodId`, `dayOfWeek`, `mealType`) VALUES (?, ?, ?, ?)';
+                await db.execute(entryQuery, [newPlanId, entry.foodId, entry.dayOfWeek, entry.mealType]);
+            }
+        }
+
+        res.status(201).json({ message: `Plan generated! Estimated Total: ₱${parsedData.calculatedTotalCost || 'N/A'}`, planId: newPlanId });
+    } catch (error) { res.status(500).json({ error: 'AI failed to adhere to strict JSON formatting. Try again.' }); }
 });
 
 // ==========================================
@@ -886,10 +1353,56 @@ app.get('/api/sellers/store/:storeId/top-products', async (req, res) => {
     }
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Nearbites Backend is running on port ${PORT}`);
+// ==========================================
+// MEAL PLAN - READ (Fetch User's Latest Plan)
+// ==========================================
+app.get('/api/mealplans/user/:userId', async (req, res) => {
+    try {
+        const [plans] = await db.execute('SELECT * FROM `MealPlans` WHERE `userId` = ? ORDER BY `planId` DESC LIMIT 1', [req.params.userId]);
+        if (plans.length === 0) return res.status(404).json({ error: 'No meal plan found.' });
+        
+        // NEW: We added f.foodId to the SELECT statement so the frontend can link to it!
+        const query = `
+            SELECT e.dayOfWeek, e.mealType, f.foodId, f.foodName, f.foodPrice, f.imageUrl, s.storeName 
+            FROM \`MealPlanEntries\` e 
+            JOIN \`Food\` f ON e.foodId = f.foodId
+            JOIN \`Stores\` s ON f.servedAt = s.storeId
+            WHERE e.planId = ? 
+            ORDER BY 
+                e.dayOfWeek ASC,
+                CASE e.mealType 
+                    WHEN 'Breakfast' THEN 1 
+                    WHEN 'Lunch' THEN 2 
+                    WHEN 'Snack' THEN 3 
+                    WHEN 'Dinner' THEN 4 
+                    ELSE 5 
+                END ASC
+        `;
+        const [entries] = await db.execute(query, [plans[0].planId]);
+        res.status(200).json({ plan: plans[0], entries });
+    } catch (error) { 
+        res.status(500).json({ error: 'Failed to fetch meal plan.' }); 
+    }
+});
+
+// ==========================================
+// ADMIN - GET ALL STORES
+// ==========================================
+app.get('/api/admin/stores', async (req, res) => {
+    try {
+        // Fetch all stores and join with the Users table to see who manages them
+        const query = `
+            SELECT s.*, u.username as managerName, u.email as managerEmail 
+            FROM \`Stores\` s
+            LEFT JOIN \`Users\` u ON s.storeManager = u.userId
+            ORDER BY s.storeName ASC
+        `;
+        const [stores] = await db.execute(query);
+        res.status(200).json(stores);
+    } catch (error) {
+        console.error('Error fetching admin stores:', error);
+        res.status(500).json({ error: 'Failed to load stores.' });
+    }
 });
 
 // ==========================================
@@ -897,12 +1410,12 @@ app.listen(PORT, () => {
 // ==========================================
 app.get('/api/admin/users', async (req, res) => {
     try {
-        const query = 'SELECT `userId`, `email`, `username`, `userType` FROM `Users`';
-        const [rows] = await db.execute(query);
-        res.status(200).json(rows);
+        // We MUST explicitly select isActive!
+        const [users] = await db.execute('SELECT `userId`, `username`, `email`, `userType`, `isActive` FROM `Users`');
+        res.status(200).json(users);
     } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ error: 'Failed to retrieve users.' });
+        console.error(error);
+        res.status(500).json({ error: 'Failed to load users.' });
     }
 });
 
@@ -920,4 +1433,10 @@ app.delete('/api/admin/users/:userId', async (req, res) => {
         console.error('Error deleting user:', error);
         res.status(500).json({ error: 'Failed to delete user.' });
     }
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Nearbites Backend is running on port ${PORT}`);
 });

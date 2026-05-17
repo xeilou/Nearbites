@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Store Menu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) window.location.replace('/index.html');
+        const urlParams = new URLSearchParams(window.location.search);
+        const storeId = urlParams.get('id');
+        if (!storeId) window.location.replace('/student-dashboard.html');
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow w-full">
+        <div class="relative w-full h-80 bg-gray-900 overflow-hidden">
+            <img id="storeBannerImg" src="" class="absolute inset-0 w-full h-full object-cover opacity-50 hidden">
+            <div id="storeBannerDefault" class="absolute inset-0 flex items-center justify-center opacity-20 text-9xl">🏪</div>
+            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent"></div>
+            
+            <div class="absolute inset-0 flex flex-col justify-end">
+                <div class="w-full max-w-7xl mx-auto px-8 pb-8">
+                    <button onclick="window.location.href='/student-dashboard.html'" class="text-white/70 hover:text-white font-bold mb-4 flex items-center space-x-2 transition w-fit">
+                        <span>&larr;</span> <span>Back</span>
+                    </button>
+                    <h1 id="storeHeroName" class="text-5xl md:text-6xl font-black text-white tracking-tight mb-2">Loading Store...</h1>
+                    <p id="storeHeroLoc" class="text-gray-300 font-medium text-lg flex items-center space-x-2">
+                        <span>📍</span> <span>Locating...</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-7xl mx-auto w-full px-8 py-10">
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-10">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="md:col-span-2 relative">
+                        <input type="text" id="localSearchName" placeholder="Search this store's menu..." class="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-gray-200 bg-gray-50 text-gray-700 outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent transition font-medium">
+                        <svg class="absolute left-4 top-4 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <div>
+                        <input type="number" id="localSearchPrice" min="0" placeholder="Max ₱ Budget" class="w-full px-4 py-3.5 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent transition font-medium text-gray-900">
+                    </div>
+                    <div>
+                        <select id="localSearchStars" class="w-full px-4 py-3.5 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent transition font-medium text-gray-600">
+                            <option value="0">Any Rating</option>
+                            <option value="3">3+ Stars</option>
+                            <option value="4">4+ Stars</option>
+                            <option value="5">5 Stars Only</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-4 flex flex-col md:flex-row gap-4 pt-2 border-t border-gray-50">
+                        <input type="text" id="localSearchTagsInput" placeholder="Type a tag & press Enter (e.g. spicy)" class="w-full md:w-1/3 px-4 py-3 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-red-600 font-medium text-gray-900 text-sm">
+                        <div class="flex flex-wrap gap-2 flex-1 items-center" id="localTagsContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="storeMenuGrid"></div>
+        </div>
+    </main>
+
+    <button onclick="toggleAI()" class="fixed bottom-6 right-6 bg-red-700 text-white p-4 rounded-full shadow-2xl hover:bg-red-800 transition z-40 text-2xl">
+        ✨
+    </button>
+
+    <div id="aiPanel" class="fixed bottom-24 right-6 w-96 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-white p-6 z-50 hidden flex-col transition-all">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-lg flex items-center space-x-2"><span>✨</span> <span>Store AI Chef</span></h3>
+            <button onclick="toggleAI()" class="text-gray-400 hover:text-white text-2xl leading-none transition">&times;</button>
+        </div>
+
+        <div class="space-y-3 mb-2">
+            <input type="text" id="quickGoal" placeholder="Craving? (e.g. Sweet, Hot meal)" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+            <div class="flex space-x-2">
+                <input type="number" id="quickBudget" min="0" placeholder="₱ Budget" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                <select id="quickStars" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                    <option value="0">Any Rating</option>
+                    <option value="3">3+ Stars</option>
+                    <option value="4">4+ Stars</option>
+                    <option value="5">5 Stars Only</option>
+                </select>
+            </div>
+            <button onclick="getQuickMealRecommendation()" class="w-full bg-red-700 text-white font-bold py-3 rounded-xl hover:bg-red-800 transition shadow-lg mt-2 flex justify-center items-center space-x-2">
+                <span>💡 Suggest from this Store</span>
+            </button>
+        </div>
+
+        <div id="aiResponseBox" class="p-4 bg-gray-800 rounded-xl hidden text-sm border border-gray-700 max-h-64 overflow-y-auto mt-4">
+            <p id="aiResponseText" class="text-gray-200 leading-relaxed">Thinking...</p>
+        </div>
+    </div>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        // 1. Fetch Store Details
+        async function loadStoreDetails() {
+            try {
+                const res = await fetch(`/api/stores/details/${storeId}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+
+                document.getElementById('storeHeroName').innerText = data.storeName;
+                document.getElementById('storeHeroLoc').innerHTML = `<span>📍</span> <span>${data.storeLocation}</span>`;
+                document.title = `Nearbites | ${data.storeName}`;
+
+                if (data.imageUrl) {
+                    const img = document.getElementById('storeBannerImg');
+                    img.src = data.imageUrl;
+                    img.classList.remove('hidden');
+                    document.getElementById('storeBannerDefault').classList.add('hidden');
+                }
+            } catch (err) {
+                alert("Store not found or suspended.");
+                window.location.replace('/student-dashboard.html');
+            }
+        }
+
+        // 2. Fetch Store Menu
+        async function loadStoreMenu() {
+            try {
+                const response = await fetch(`/api/food/store/${storeId}`);
+                const menu = await response.json();
+                
+                // ⚡ SAVE THE MENU FOR LOCAL AI
+                window.currentStoreMenu = menu;
+
+                const container = document.getElementById('storeMenuGrid');
+                container.innerHTML = '';
+
+                if (menu.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 italic p-4 bg-white rounded-2xl border border-gray-100 col-span-full">No food items listed for this store yet.</p>';
+                    return;
+                }
+
+                // Group the menu items by Category
+                const groupedMenu = menu.reduce((acc, food) => {
+                    const cat = food.category || 'Main Menu';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(food);
+                    return acc;
+                }, {});
+
+                // Render each Category
+                for (const [categoryName, foods] of Object.entries(groupedMenu)) {
+                    
+                    const sectionHTML = `
+                        <div class="mb-10 col-span-full">
+                            <h2 class="text-2xl font-black text-gray-900 mb-6 border-b-2 border-red-100 pb-2 inline-block uppercase tracking-tight">${categoryName}</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="grid-${categoryName.replace(/\s+/g, '-')}">
+                            </div>
+                        </div>
+                    `;
+                    container.insertAdjacentHTML('beforeend', sectionHTML);
+                    
+                    const grid = document.getElementById(`grid-${categoryName.replace(/\s+/g, '-')}`);
+
+                    // Draw the cards!
+                    foods.forEach(food => {
+                        const card = document.createElement('a');
+                        card.href = `/product.html?id=${food.foodId}`;
+                        
+                        card.className = 'food-card bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col h-full hover:shadow-xl hover:-translate-y-1 transition duration-300 group cursor-pointer';
+                        card.setAttribute('data-name', food.foodName.toLowerCase());
+                        card.setAttribute('data-price', food.foodPrice);
+                        card.setAttribute('data-stars', food.avgRating || 0);
+                        card.setAttribute('data-tags', (food.foodTags || '').toLowerCase());
+
+                        // CLICKABLE TAG BUTTONS
+                        let tagsHTML = '';
+                        if (food.foodTags) {
+                            tagsHTML = `<div class="mt-3 flex flex-wrap gap-1 relative z-10">` + 
+                                food.foodTags.split(',').filter(t => t.trim() !== '').map(t => `<button onclick="event.preventDefault(); window.location.href='/search-results.html?tags=${encodeURIComponent(t.trim())}'" class="bg-gray-50 text-gray-600 border border-gray-200 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition cursor-pointer">${t.trim()}</button>`).join('') + 
+                                `</div>`;
+                        }
+
+                        const imgContent = food.imageUrl 
+                            ? `<img src="${food.imageUrl}" class="w-full h-48 object-cover rounded-2xl mb-4 group-hover:opacity-90 transition" />`
+                            : `<div class="w-full h-48 bg-gray-100 rounded-2xl mb-4 flex items-center justify-center text-5xl opacity-50 group-hover:opacity-100 transition">🍱</div>`;
+
+                        const starRating = parseFloat(food.avgRating) || 0;
+                        const reviewCount = parseInt(food.reviewCount) || 0;
+                        let starHTML = '';
+                        if (reviewCount > 0) {
+                            starHTML = `<div class="flex items-center space-x-1 text-sm font-bold text-gray-700 mt-2">
+                                <span class="text-yellow-400 text-lg">★</span>
+                                <span>${starRating.toFixed(1)}</span>
+                                <span class="text-gray-400 font-normal">(${reviewCount})</span>
+                            </div>`;
+                        }
+
+                        card.innerHTML = `
+                            ${imgContent}
+                            <div class="flex-grow flex flex-col">
+                                <div class="flex justify-between items-start mb-1 gap-2">
+                                    <h3 class="font-black text-gray-900 text-lg leading-tight group-hover:text-red-700 transition">${food.foodName}</h3>
+                                    <span class="text-red-700 font-black whitespace-nowrap bg-red-50 px-2 py-1 rounded-lg">₱${parseFloat(food.foodPrice).toFixed(2)}</span>
+                                </div>
+                                <p class="text-sm text-gray-500 line-clamp-2 mt-1">${food.description || ''}</p>
+                                ${starHTML}
+                                <div class="mt-auto pt-3">
+                                    ${tagsHTML}
+                                </div>
+                            </div>
+                        `;
+                        grid.appendChild(card);
+                    });
+                }
+            } catch (error) {
+                console.error("Menu Load Error:", error);
+                document.getElementById('storeMenuGrid').innerHTML = '<p class="text-red-500 font-bold p-4">Failed to load the menu.</p>';
+            }
+        }
+
+        // =====================================
+        // ADVANCED LOCAL FILTERING LOGIC
+        // =====================================
+        let activeSearchTags = [];
+        
+        // 1. Tag Pill UI Logic
+        const tagInput = document.getElementById('localSearchTagsInput');
+        const tagContainer = document.getElementById('localTagsContainer');
+
+        if (tagInput) {
+            tagInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = tagInput.value.trim().toLowerCase();
+                    if (val && !activeSearchTags.includes(val)) {
+                        activeSearchTags.push(val);
+                        renderLocalTags();
+                        filterStoreMenu();
+                    }
+                    tagInput.value = '';
+                }
+            });
+        }
+
+        function renderLocalTags() {
+            tagContainer.innerHTML = activeSearchTags.map((tag, index) => `
+                <span class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-xl text-sm font-bold flex items-center space-x-1 shadow-sm">
+                    <span>${tag}</span>
+                    <button onclick="removeLocalTag(${index})" class="hover:text-red-900 ml-1">&times;</button>
+                </span>
+            `).join('');
+        }
+
+        window.removeLocalTag = function(index) {
+            activeSearchTags.splice(index, 1);
+            renderLocalTags();
+            filterStoreMenu();
+        };
+
+        // 2. Main Filtering Function (Live Filtering)
+        window.filterStoreMenu = function() {
+            const qName = document.getElementById('localSearchName').value.toLowerCase();
+            const qPrice = parseFloat(document.getElementById('localSearchPrice').value) || 999999;
+            const qStars = parseFloat(document.getElementById('localSearchStars').value) || 0;
+
+            document.querySelectorAll('.food-card').forEach(card => {
+                const name = card.getAttribute('data-name') || '';
+                const tags = card.getAttribute('data-tags') || '';
+                const price = parseFloat(card.getAttribute('data-price')) || 0;
+                const stars = parseFloat(card.getAttribute('data-stars')) || 0;
+
+                const matchName = name.includes(qName);
+                const matchPrice = price <= qPrice;
+                const matchStars = stars >= qStars;
+                
+                // Ensures the food has ALL the requested tags
+                const matchTags = activeSearchTags.length === 0 || activeSearchTags.every(t => tags.includes(t));
+
+                if (matchName && matchPrice && matchStars && matchTags) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        };
+
+        // Hook up the inputs!
+        ['localSearchName', 'localSearchPrice', 'localSearchStars'].forEach(id => {
+            document.getElementById(id).addEventListener('input', filterStoreMenu);
+        });
+
+        loadStoreDetails();
+        loadStoreMenu();
+
+        // =====================================
+        // AI FEATURE: STORE-SPECIFIC QUICK MEAL (LOCAL AI)
+        // =====================================
+        window.toggleAI = function() {
+            const panel = document.getElementById('aiPanel');
+            panel.classList.toggle('hidden');
+            panel.classList.toggle('flex');
+        };
+
+        window.getQuickMealRecommendation = function() {
+            const aiBox = document.getElementById('aiResponseBox');
+            const aiText = document.getElementById('aiResponseText');
+            
+            aiBox.classList.remove('hidden');
+            aiText.innerHTML = `<span class="animate-pulse">Analyzing store menu... ✨</span>`;
+
+            // Add a slight delay to mimic AI thinking!
+            setTimeout(() => {
+                const budget = parseFloat(document.getElementById('quickBudget').value) || 999999;
+                const stars = parseFloat(document.getElementById('quickStars').value) || 0;
+                const goal = document.getElementById('quickGoal').value.toLowerCase().trim();
+
+                if (!window.currentStoreMenu || window.currentStoreMenu.length === 0) {
+                    aiText.innerHTML = "No menu available to analyze.";
+                    return;
+                }
+
+                // ⚡ Score every item on the store's menu based on user filters!
+                let bestMatches = window.currentStoreMenu.map(food => {
+                    let score = 0;
+                    const fPrice = parseFloat(food.foodPrice) || 0;
+                    const fStars = parseFloat(food.avgRating) || 0;
+                    const name = (food.foodName || '').toLowerCase();
+                    const tags = (food.foodTags || '').toLowerCase();
+                    const desc = (food.description || '').toLowerCase();
+
+                    // 1. Strict Filters (Eliminate if over budget or too low rating)
+                    if (fPrice > budget || fStars < stars) return { food, score: -1 };
+
+                    // 2. Craving Matcher (Boost score if it matches the keyword)
+                    if (goal) {
+                        const goalWords = goal.split(' ');
+                        let matched = false;
+                        goalWords.forEach(w => {
+                            if (w.length > 2) {
+                                if (name.includes(w)) { score += 10; matched = true; }
+                                if (tags.includes(w)) { score += 8; matched = true; }
+                                if (desc.includes(w)) { score += 5; matched = true; }
+                            }
+                        });
+                        if (!matched) return { food, score: -1 }; // Must match the craving if one is typed!
+                    } else {
+                        score += fStars; // If no craving typed, just recommend their highest rated food
+                    }
+
+                    return { food, score };
+                }).filter(item => item.score >= 0).sort((a, b) => b.score - a.score);
+
+                // ⚡ Render the Results!
+                if (bestMatches.length > 0) {
+                    const topFoods = bestMatches.slice(0, 2).map(m => m.food); // Grab top 2 best matches
+                    let html = `<p class="text-gray-200 mb-4 text-sm leading-relaxed">Here are the best matches from this store's menu based on your cravings!</p><div class="space-y-2">`;
+
+                    topFoods.forEach(food => {
+                        html += `
+                            <div onclick="window.location.href='/product.html?id=${food.foodId}'" class="flex items-center p-3 bg-gray-800 border border-gray-700 rounded-2xl shadow-sm hover:border-red-500 hover:bg-gray-700 transition duration-300 cursor-pointer group">
+                                ${food.imageUrl 
+                                    ? `<img src="${food.imageUrl}" class="w-12 h-12 rounded-xl object-cover border border-gray-600 mr-3 group-hover:scale-105 transition-transform">`
+                                    : `<div class="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center text-2xl border border-gray-600 mr-3 overflow-hidden">🥡</div>`
+                                }
+                                <div class="flex-1">
+                                    <div class="font-bold text-white leading-tight text-sm">${food.foodName}</div>
+                                </div>
+                                <div class="font-black text-white text-xs bg-gray-900 px-2 py-1 rounded-lg border border-gray-700 group-hover:bg-red-500 transition-colors">₱${parseFloat(food.foodPrice).toFixed(2)}</div>
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                    aiText.innerHTML = html;
+                } else {
+                    aiText.innerHTML = "I couldn't find anything on this specific store's menu that exactly matches your budget, rating, and cravings. Try loosening your filters!";
+                }
+            }, 600);
+        };
+    </script>
+</body>
+</html>

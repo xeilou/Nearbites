@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearbites | Search Results</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+        if (!raw) window.location.replace('/index.html');
+        const currentUser = JSON.parse(raw);
+    </script>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen flex flex-col">
+
+    <div id="nearbites-navbar"></div>
+
+    <main class="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full">
+
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-gray-100 pb-6 gap-4">
+            <div>
+                <button onclick="window.location.href='/student-dashboard.html'" class="text-gray-500 hover:text-red-700 font-bold mb-2 flex items-center space-x-2 transition text-sm">
+                    <span>&larr;</span> <span>Back to Dashboard</span>
+                </button>
+                <h1 class="text-3xl font-black text-gray-900 tracking-tight">Search Results</h1>
+                <p id="searchSubtext" class="text-gray-500 font-medium">Finding the perfect bite...</p>
+            </div>
+            
+            <div id="activeFiltersContainer" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <div id="storeResultsContainer" class="hidden mb-10 border-b border-gray-100 pb-10">
+            <h2 class="text-xl font-black text-gray-900 mb-6 flex items-center space-x-2">
+                <span>🏪</span> <span>Matching Stores</span>
+            </h2>
+            <div id="storeResultsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+        </div>
+
+        <div id="searchResultsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-12 w-full"></div>
+
+    </main> 
+
+    <div id="aiModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm transition-all">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative overflow-hidden border border-gray-100 max-h-[90vh] flex flex-col">
+            <div class="absolute -top-20 -right-20 w-48 h-48 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none"></div>
+            <div class="absolute -bottom-20 -left-20 w-48 h-48 bg-red-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none"></div>
+
+            <div class="relative z-10 flex flex-col h-full">
+                <div class="flex items-center justify-center space-x-2 mb-6 shrink-0">
+                    <span class="text-3xl">✨</span>
+                    <h3 class="text-2xl font-black text-gray-900">AI Chef Pairing</h3>
+                </div>
+                
+                <div id="aiPairSetup" class="space-y-4 mb-2 shrink-0">
+                    <p class="text-sm text-gray-500 mb-4 text-center">Set preferences for this specific pairing:</p>
+                    <input type="text" id="pairGoal" placeholder="Craving? (e.g., Sweet, Cold drink)" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium">
+                    <div class="flex space-x-2">
+                        <input type="number" id="pairBudget" placeholder="₱ Max Budget" class="w-1/2 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium">
+                        <select id="pairStars" class="w-1/2 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium text-gray-600">
+                            <option value="0">Any Rating</option>
+                            <option value="3">3+ Stars</option>
+                            <option value="4">4+ Stars</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-3 pt-4">
+                        <button onclick="document.getElementById('aiModal').classList.add('hidden'); document.getElementById('aiModal').classList.remove('flex');" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition">Cancel</button>
+                        <button onclick="executeAIPairing()" class="flex-1 bg-red-700 text-white font-bold py-3.5 rounded-xl hover:bg-red-800 transition shadow-lg">Find Pair</button>
+                    </div>
+                </div>
+
+                <div id="aiLoading" class="text-center py-8 hidden shrink-0">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-700 mx-auto mb-4"></div>
+                    <p class="text-gray-500 font-bold animate-pulse">Analyzing menu and allergies...</p>
+                </div>
+
+                <div id="aiContent" class="hidden flex flex-col overflow-hidden">
+                    <p id="aiPitch" class="text-gray-700 text-center italic mb-4 leading-relaxed text-sm shrink-0">"..."</p>
+                    <div id="aiFoodContainer" class="space-y-3 mb-6 overflow-y-auto flex-grow pr-2 pb-2"></div>
+                    <button onclick="document.getElementById('aiModal').classList.add('hidden'); document.getElementById('aiModal').classList.remove('flex');" class="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-lg shrink-0">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button onclick="toggleAI()" class="fixed bottom-6 right-6 bg-red-700 text-white p-4 rounded-full shadow-2xl hover:bg-red-800 transition z-40 text-2xl">
+        ✨
+    </button>
+
+    <div id="aiPanel" class="fixed bottom-24 right-6 w-96 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-white p-6 z-50 hidden flex-col transition-all">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-lg flex items-center space-x-2"><span>✨</span> <span>AI Quick Bite</span></h3>
+            <button onclick="toggleAI()" class="text-gray-400 hover:text-white text-2xl leading-none transition">&times;</button>
+        </div>
+
+        <div class="space-y-3 mb-2">
+            <input type="text" id="quickGoal" placeholder="Craving? (e.g. Spicy, High Protein)" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+            <div class="flex space-x-2">
+                <input type="number" id="quickBudget" placeholder="₱ Budget" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                <select id="quickStars" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                    <option value="0">Any Rating</option>
+                    <option value="3">3+ Stars</option>
+                    <option value="4">4+ Stars</option>
+                    <option value="5">5 Stars Only</option>
+                </select>
+            </div>
+            <button onclick="getQuickMealRecommendation()" class="w-full bg-red-700 text-white font-bold py-3 rounded-xl hover:bg-red-800 transition shadow-lg mt-2 flex justify-center items-center space-x-2">
+                <span>💡 Suggest Meal</span>
+            </button>
+        </div>
+
+        <div id="aiResponseBox" class="p-4 bg-gray-800 rounded-xl hidden text-sm border border-gray-700 max-h-64 overflow-y-auto mt-4">
+            <p id="aiResponseText" class="text-gray-200 leading-relaxed">Thinking...</p>
+        </div>
+    </div>
+
+    <script src="/js/ui.js"></script>
+    <script>
+        (async function() {
+            // 1. Fuzzy Search Helper
+            function getLevenshteinDistance(a, b) {
+                if (a.length === 0) return b.length;
+                if (b.length === 0) return a.length;
+                const matrix = [];
+                for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+                for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+                for (let i = 1; i <= b.length; i++) {
+                    for (let j = 1; j <= a.length; j++) {
+                        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                            matrix[i][j] = matrix[i - 1][j - 1];
+                        } else {
+                            matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+                        }
+                    }
+                }
+                return matrix[b.length][a.length];
+            }
+
+            // 2. Read URL Parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const qQuery = (urlParams.get('q') || '').toLowerCase().trim();
+            const qPrice = parseFloat(urlParams.get('price')) || 999999;
+            const qStars = parseFloat(urlParams.get('stars')) || 0;
+            const qTagsStr = urlParams.get('tags') || '';
+            const searchTags = qTagsStr ? qTagsStr.split(',').map(t => t.toLowerCase()) : [];
+
+            // 3. Render the Badges at the top
+            const filterUI = document.getElementById('activeFiltersContainer');
+            let uiHTML = '';
+            if (qQuery) uiHTML += `<span class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-gray-200 shadow-sm">🔍 "${urlParams.get('q')}"</span>`;
+            if (qPrice < 999999) uiHTML += `<span class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-gray-200 shadow-sm">💰 Max ₱${qPrice}</span>`;
+            if (qStars > 0) uiHTML += `<span class="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-gray-200 shadow-sm">⭐ ${qStars}+ Stars</span>`;
+            searchTags.forEach(tag => {
+                uiHTML += `<span class="bg-red-50 text-red-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-red-200 shadow-sm">🏷️ ${tag}</span>`;
+            });
+            filterUI.innerHTML = uiHTML;
+
+            // 4. Fetch & Filter Data
+            try {
+                const response = await fetch(`/api/food/smart-feed/${currentUser.userId}`);
+                const data = await response.json();
+                
+                // ⚡ GRAB THE SCORED FEED!
+                const allFood = data.feed || data.all || [];
+
+                // ==========================================
+                // ⚡ NEW: STORE EXTRACTION & FUZZY MATCHING
+                // ==========================================
+                const uniqueStores = new Map();
+                allFood.forEach(food => {
+                    const sId = food.servedAt || food.storeId;
+                    const sName = food.storeName;
+                    if (sId && sName) uniqueStores.set(sId, sName);
+                });
+
+                const matchedStores = [];
+                if (qQuery) {
+                    uniqueStores.forEach((sName, sId) => {
+                        const nameLower = sName.toLowerCase();
+                        if (nameLower.includes(qQuery)) {
+                            matchedStores.push({ id: sId, name: sName });
+                            return;
+                        }
+                        
+                        const queryWords = qQuery.split(' ').filter(w => w.length > 2);
+                        if (queryWords.length === 0) return;
+                        const targetWords = nameLower.split(' ').filter(w => w.length > 2);
+                        const isFuzzy = queryWords.some(qw => 
+                            targetWords.some(tw => {
+                                const dist = getLevenshteinDistance(qw, tw);
+                                const maxLength = Math.max(qw.length, tw.length);
+                                return dist <= Math.floor(maxLength / 4) + 1;
+                            })
+                        );
+                        
+                        if (isFuzzy) matchedStores.push({ id: sId, name: sName });
+                    });
+                }
+
+                // Render Matching Stores
+                const storeContainer = document.getElementById('storeResultsContainer');
+                const storeGrid = document.getElementById('storeResultsGrid');
+                if (matchedStores.length > 0) {
+                    storeContainer.classList.remove('hidden');
+                    storeGrid.innerHTML = matchedStores.map(store => `
+                        <div onclick="window.location.href='/store.html?id=${store.id}'" class="bg-white rounded-2xl p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-red-300 transition duration-300 cursor-pointer group flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-gray-50 rounded-xl flex items-center justify-center text-3xl group-hover:scale-110 transition-transform shadow-inner border border-gray-100">🏪</div>
+                            <div class="flex-1">
+                                <h3 class="font-black text-gray-900 group-hover:text-red-700 transition text-lg leading-tight">${store.name}</h3>
+                                <p class="text-xs text-gray-500 font-medium mt-1 flex items-center space-x-1">
+                                    <span>📍</span> <span>View Store Menu</span>
+                                </p>
+                            </div>
+                            <div class="text-gray-300 group-hover:text-red-500 transition pr-2">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    storeContainer.classList.add('hidden');
+                }
+
+                // ==========================================
+                // FOOD FILTERING
+                // ==========================================
+                const filtered = allFood.filter(food => {
+                    const name = (food.foodName || '').toLowerCase();
+                    const store = (food.storeName || '').toLowerCase();
+                    const tags = (food.foodTags || '').toLowerCase();
+                    const price = parseFloat(food.foodPrice) || 0;
+                    const stars = parseFloat(food.avgRating) || 0;
+
+                    const matchQuery = (() => {
+                        if (!qQuery) return true;
+                        if (name.includes(qQuery) || store.includes(qQuery)) return true;
+                        const queryWords = qQuery.split(' ').filter(w => w.length > 2);
+                        if (queryWords.length === 0) return false;
+                        const targetWords = [...name.split(' '), ...store.split(' ')].filter(w => w.length > 2);
+                        return queryWords.some(qw => 
+                            targetWords.some(tw => {
+                                const dist = getLevenshteinDistance(qw, tw);
+                                const maxLength = Math.max(qw.length, tw.length);
+                                return dist <= Math.floor(maxLength / 4) + 1;
+                            })
+                        );
+                    })();
+
+                    const matchPrice = price <= qPrice;
+                    const matchStars = stars >= qStars;
+                    const matchTags = searchTags.length === 0 || searchTags.every(t => tags.includes(t));
+
+                    return matchQuery && matchPrice && matchStars && matchTags;
+                });
+
+                filtered.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+                document.getElementById('searchSubtext').innerText = `Found ${filtered.length} matching items.`;
+                const grid = document.getElementById('searchResultsGrid');
+                grid.innerHTML = '';
+
+                if (filtered.length === 0 && matchedStores.length === 0) {
+                    grid.innerHTML = `
+                        <div class="col-span-full py-20 text-center">
+                            <div class="text-6xl mb-4">🕵️</div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-2">No matches found</h3>
+                            <p class="text-gray-500">Click the search bar above to try adjusting your filters!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                filtered.forEach(food => {
+                    const card = document.createElement('div');
+                    card.className = 'food-card bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition flex flex-col cursor-pointer group';
+                    card.onclick = () => window.location.href = `/product.html?id=${food.foodId}`;
+
+                    const rating = parseFloat(food.avgRating) > 0 ? parseFloat(food.avgRating).toFixed(1) : '0.0';
+                    const reviewText = food.reviewCount > 0 ? `(${food.reviewCount})` : '';
+
+                    let tagsHTML = '';
+                    if (food.foodTags) {
+                        tagsHTML = `<div class="mt-2 flex flex-wrap gap-1">` + 
+                            food.foodTags.split(',').filter(t => t.trim() !== '').map(t => `<span class="bg-gray-50 text-gray-600 border border-gray-200 text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${t.trim()}</span>`).join('') + 
+                            `</div>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="relative w-full h-40 overflow-hidden bg-gray-50 border-b border-gray-100">
+                            ${food.imageUrl 
+                                ? `<img src="${food.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">`
+                                : `<div class="w-full h-full flex items-center justify-center text-7xl group-hover:scale-110 transition-transform duration-300 opacity-60">🍱</div>`
+                            }
+                            <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg shadow-sm flex items-center space-x-1 text-xs font-black text-gray-900">
+                                <span class="text-yellow-400">★</span>
+                                <span>${rating} <span class="text-gray-400 font-medium">${reviewText}</span></span>
+                            </div>
+                        </div>
+                        <div class="p-4 flex flex-col flex-grow">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-gray-900 text-lg group-hover:text-red-700 transition-colors leading-tight pr-2">${food.foodName}</h3>
+                                <span class="text-red-700 font-black whitespace-nowrap">₱${parseFloat(food.foodPrice).toFixed(2)}</span>
+                            </div>
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center space-x-1">
+                                <span>📍</span> <span class="truncate">${food.storeName || 'Campus Store'}</span>
+                            </div>
+                            ${tagsHTML}
+                            <p class="text-gray-500 text-sm line-clamp-2 mt-auto pt-2">${food.description || ''}</p>
+                        </div>
+                        <div class="p-4 pt-0 mt-auto">
+                            <button onclick="event.stopPropagation(); askAIPairing('${food.foodName.replace(/'/g, "\\'")}')" class="w-full text-xs font-bold text-gray-900 bg-gray-100 hover:bg-gray-200 py-2.5 rounded-xl transition flex justify-center items-center space-x-1 border border-gray-200">
+                                <span>✨ AI Pair</span>
+                            </button>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+
+            } catch (error) {
+                document.getElementById('searchResultsGrid').innerHTML = `<p class="col-span-full text-center text-red-500 font-bold py-10">Failed to load search results.</p>`;
+            }
+        })();
+
+        // =====================================
+        // AI FEATURE: PAIRING GENERATOR
+        // =====================================
+        window.currentPairTarget = '';
+
+        window.askAIPairing = function(targetFoodName) {
+            window.currentPairTarget = targetFoodName;
+            document.getElementById('aiPairSetup').classList.remove('hidden');
+            document.getElementById('aiLoading').classList.add('hidden');
+            document.getElementById('aiContent').classList.add('hidden');
+            
+            const modal = document.getElementById('aiModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
+        window.executeAIPairing = async function() {
+            document.getElementById('aiPairSetup').classList.add('hidden');
+            document.getElementById('aiLoading').classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/ai/recommend-bundle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        userId: currentUser.userId, 
+                        foodName: window.currentPairTarget,
+                        customBudget: document.getElementById('pairBudget').value,
+                        goal: document.getElementById('pairGoal').value,
+                        minStars: document.getElementById('pairStars').value
+                    })
+                });
+                
+                const data = await response.json();
+                const container = document.getElementById('aiFoodContainer');
+                container.innerHTML = '';
+                
+                if (response.ok && data.foods && data.foods.length > 0) {
+                    document.getElementById('aiPitch').innerText = `"${data.recommendation}"`;
+                    
+                    data.foods.forEach(food => {
+                        container.innerHTML += `
+                            <div onclick="window.location.href='/product.html?id=${food.foodId}'" class="bg-gray-50 rounded-2xl p-3 border border-gray-200 cursor-pointer hover:bg-red-50 hover:border-red-200 transition group flex items-center space-x-4 shadow-sm mb-2">
+                                ${food.imageUrl 
+                                    ? `<img src="${food.imageUrl}" class="w-16 h-16 object-cover rounded-xl shadow-sm border border-gray-200">`
+                                    : `<div class="w-16 h-16 bg-white rounded-xl flex items-center justify-center text-3xl shadow-sm border border-gray-200 overflow-hidden">🍱</div>`
+                                }
+                                <div class="flex-1">
+                                    <h4 class="font-bold text-gray-900 group-hover:text-red-700 transition leading-tight">${food.foodName}</h4>
+                                    <p class="text-xs text-gray-500 flex items-center space-x-1 mt-1">
+                                        <span>📍</span> <span class="truncate">${food.storeName || 'Campus Store'}</span>
+                                    </p>
+                                </div>
+                                <div class="font-black text-red-700 pr-2">₱${food.foodPrice}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    document.getElementById('aiLoading').classList.add('hidden');
+                    document.getElementById('aiContent').classList.remove('hidden');
+                } else {
+                    document.getElementById('aiPitch').innerText = "Oops! The AI couldn't find a suitable combo matching your parameters right now.";
+                    document.getElementById('aiLoading').classList.add('hidden');
+                    document.getElementById('aiContent').classList.remove('hidden');
+                }
+            } catch (error) { 
+                alert("AI Connection Failed."); 
+            }
+        };
+
+        // =====================================
+        // AI FEATURE: QUICK MEAL GENERATOR
+        // =====================================
+        window.toggleAI = function() {
+            const panel = document.getElementById('aiPanel');
+            panel.classList.toggle('hidden');
+            panel.classList.toggle('flex');
+        };
+
+        window.getQuickMealRecommendation = async function() {
+            const aiBox = document.getElementById('aiResponseBox');
+            const aiText = document.getElementById('aiResponseText');
+            
+            aiBox.classList.remove('hidden');
+            aiText.innerHTML = `<span class="animate-pulse">Analyzing culinary data... ✨</span>`;
+
+            try {
+                const response = await fetch('/api/ai/recommend-quick-meal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        userId: currentUser.userId, 
+                        customBudget: document.getElementById('quickBudget').value,
+                        goal: document.getElementById('quickGoal').value,
+                        minStars: document.getElementById('quickStars').value
+                    })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    let html = '';
+                    if (data.budget) html += `<span class="text-green-400 font-bold block mb-2 text-[10px] uppercase tracking-wider">Budget: ₱${data.budget}</span>`;
+                    html += `<p class="text-gray-200 mb-4 text-sm leading-relaxed">${data.recommendation || "No recommendation."}</p>`;
+                    
+                    if (data.foods && data.foods.length > 0) {
+                        html += `<div class="space-y-2">`;
+                        data.foods.forEach(food => {
+                            html += `
+                                <div onclick="window.location.href='/product.html?id=${food.foodId}'" class="flex items-center p-3 bg-gray-800 border border-gray-700 rounded-2xl shadow-sm hover:border-red-500 hover:bg-gray-700 transition duration-300 cursor-pointer group">
+                                    ${food.imageUrl 
+                                        ? `<img src="${food.imageUrl}" class="w-12 h-12 rounded-xl object-cover border border-gray-600 mr-3 group-hover:scale-105 transition-transform">`
+                                        : `<div class="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center text-2xl border border-gray-600 mr-3 overflow-hidden">🥡</div>`
+                                    }
+                                    <div class="flex-1">
+                                        <div class="font-bold text-white leading-tight text-sm">${food.foodName}</div>
+                                        <div class="text-[10px] text-gray-400 mt-0.5 flex items-center space-x-1">
+                                            <span>📍</span> <span>${food.storeName || 'Campus Store'}</span>
+                                        </div>
+                                    </div>
+                                    <div class="font-black text-white text-xs bg-gray-900 px-2 py-1 rounded-lg border border-gray-700 group-hover:bg-red-500 transition-colors">₱${food.foodPrice}</div>
+                                </div>
+                            `;
+                        });
+                        html += `</div>`;
+                    }
+                    aiText.innerHTML = html;
+                } else { aiText.innerHTML = `${data.error}`; }
+            } catch (err) { aiText.innerText = 'Connection to AI failed.'; }
+        };
+
+    </script>
+</body>
+</html>

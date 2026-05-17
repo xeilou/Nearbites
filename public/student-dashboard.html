@@ -5,16 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nearbites | Student Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <meta name="nearbites-guard" content="1">
+    <meta name="nearbites-guard" content="1,2,3">
     <script>
         const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
         if (!raw) {
             window.location.replace('/index.html');
         } else {
             const currentUser = JSON.parse(raw);
-            if (Number(currentUser.userType) !== 1) {
-                window.location.replace('/index.html');
-            }
+            if (!currentUser.userType) window.location.replace('/index.html');
         }
     </script>
 </head>
@@ -23,98 +21,206 @@
     <div id="nearbites-navbar"></div>
 
     <main class="flex-grow p-8 max-w-7xl mx-auto w-full">
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <h2 class="text-2xl font-bold text-gray-900" id="userGreeting">Campus Menu</h2>
-            </div>
-            <div class="flex items-center space-x-3">
-                <input type="text" id="searchMenu" placeholder="Search food..." class="px-4 py-2 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none w-64">
-                <button id="quickToggle" class="px-3 py-2 rounded-xl bg-gray-100 text-sm text-gray-800 hover:bg-gray-200 transition">Grab &amp; Go: Off</button>
-            </div>
-        </div>
         <div id="menuContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            </div>
+        </div>
     </main>
 
     <button onclick="toggleAI()" class="fixed bottom-6 right-6 bg-red-700 text-white p-4 rounded-full shadow-2xl hover:bg-red-800 transition z-40 text-2xl">
         ✨
     </button>
 
-    <div id="aiPanel" class="fixed bottom-24 right-6 w-80 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-white p-6 z-50 hidden flex-col transition-all">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="font-bold text-lg flex items-center space-x-2"><span>✨</span> <span>Qwen AI</span></h3>
-            <button onclick="toggleAI()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+    <div id="aiPanel" class="fixed bottom-24 right-6 w-96 bg-gray-900 rounded-3xl shadow-2xl border border-gray-700 text-white p-6 z-50 hidden flex-col transition-all">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="font-bold text-lg flex items-center space-x-2"><span>✨</span> <span>AI Quick Bite</span></h3>
+            <button onclick="toggleAI()" class="text-gray-400 hover:text-white text-2xl leading-none transition">&times;</button>
         </div>
-        
-        <div class="space-y-3 mb-4">
-            <button onclick="generateMealPlan()" class="w-full bg-white text-black font-bold py-2.5 rounded-xl hover:bg-gray-200 transition text-sm">
-                🗓️ Generate Weekly Plan
-            </button>
+
+        <div class="space-y-3 mb-2">
+            <input type="text" id="quickGoal" placeholder="Craving? (e.g. Spicy, High Protein)" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
             <div class="flex space-x-2">
-                <input type="number" id="customBudget" placeholder="₱ Any" class="w-24 px-3 py-2 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white">
-                <button onclick="getBudgetRecommendation()" class="flex-grow border border-gray-700 text-white font-bold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm">
-                    💰 Budget Idea
-                </button>
+                <input type="number" id="quickBudget" placeholder="₱ Budget" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                <select id="quickStars" class="w-1/2 px-4 py-3 rounded-xl bg-gray-800 border border-gray-600 text-sm outline-none focus:border-red-500 text-white transition">
+                    <option value="0">Any Rating</option>
+                    <option value="3">3+ Stars</option>
+                    <option value="4">4+ Stars</option>
+                    <option value="5">5 Stars Only</option>
+                </select>
             </div>
-            <button onclick="viewMealPlan()" class="w-full border border-red-700 text-red-400 font-bold py-2 rounded-xl hover:bg-red-900/30 transition text-sm">
-                👀 View Current Plan
+            <button onclick="getQuickMealRecommendation()" class="w-full bg-red-700 text-white font-bold py-3 rounded-xl hover:bg-red-800 transition shadow-lg mt-2 flex justify-center items-center space-x-2">
+                <span>💡 Suggest Meal</span>
             </button>
         </div>
 
-        <div id="aiResponseBox" class="p-4 bg-gray-800 rounded-xl hidden text-sm border border-gray-700 max-h-48 overflow-y-auto">
+        <div id="aiResponseBox" class="p-4 bg-gray-800 rounded-xl hidden text-sm border border-gray-700 max-h-64 overflow-y-auto mt-4">
             <p id="aiResponseText" class="text-gray-200 leading-relaxed">Thinking...</p>
         </div>
     </div>
 
-    <div id="mealPlanModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl max-h-[80vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-6">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-900">Your Weekly Menu</h2>
-                    <p class="text-gray-500 text-sm">AI-Curated for your profile</p>
+    <div id="aiModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm transition-all">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative overflow-hidden border border-gray-100 max-h-[90vh] flex flex-col">
+            <div class="absolute -top-20 -right-20 w-48 h-48 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none"></div>
+            <div class="absolute -bottom-20 -left-20 w-48 h-48 bg-red-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none"></div>
+
+            <div class="relative z-10 flex flex-col h-full">
+                <div class="flex items-center justify-center space-x-2 mb-6 shrink-0">
+                    <span class="text-3xl">✨</span>
+                    <h3 class="text-2xl font-black text-gray-900">AI Chef Pairing</h3>
                 </div>
-                <button onclick="toggleMealPlanModal(false)" class="text-gray-500 hover:text-black text-3xl font-bold">&times;</button>
+                
+                <div id="aiPairSetup" class="space-y-4 mb-2 shrink-0">
+                    <p class="text-sm text-gray-500 mb-4 text-center">Set preferences for this specific pairing:</p>
+                    <input type="text" id="pairGoal" placeholder="Craving? (e.g., Sweet, Cold drink)" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium">
+                    <div class="flex space-x-2">
+                        <input type="number" id="pairBudget" placeholder="₱ Max Budget" class="w-1/2 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium">
+                        <select id="pairStars" class="w-1/2 px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 outline-none focus:border-red-500 font-medium text-gray-600">
+                            <option value="0">Any Rating</option>
+                            <option value="3">3+ Stars</option>
+                            <option value="4">4+ Stars</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-3 pt-4">
+                        <button onclick="document.getElementById('aiModal').classList.add('hidden'); document.getElementById('aiModal').classList.remove('flex');" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition">Cancel</button>
+                        <button onclick="executeAIPairing()" class="flex-1 bg-red-700 text-white font-bold py-3.5 rounded-xl hover:bg-red-800 transition shadow-lg">Find Pair</button>
+                    </div>
+                </div>
+
+                <div id="aiLoading" class="text-center py-8 hidden shrink-0">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-700 mx-auto mb-4"></div>
+                    <p class="text-gray-500 font-bold animate-pulse">Analyzing menu and allergies...</p>
+                </div>
+
+                <div id="aiContent" class="hidden flex flex-col overflow-hidden">
+                    <p id="aiPitch" class="text-gray-700 text-center italic mb-4 leading-relaxed text-sm shrink-0">"..."</p>
+                    <div id="aiFoodContainer" class="space-y-3 mb-6 overflow-y-auto flex-grow pr-2 pb-2"></div>
+                    <button onclick="document.getElementById('aiModal').classList.add('hidden'); document.getElementById('aiModal').classList.remove('flex');" class="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-lg shrink-0">Close</button>
+                </div>
             </div>
-            <div id="mealPlanContent" class="space-y-6">
+        </div>
+    </div>
+
+    <div id="searchOverlay" class="fixed inset-0 bg-white/95 backdrop-blur-xl z-[100] hidden flex-col transition-all duration-300 opacity-0 overflow-y-auto">
+        <div class="max-w-5xl mx-auto w-full p-8 pt-16 md:pt-32 relative flex flex-col min-h-full">
+            
+            <button onclick="closeSearchModal()" class="absolute top-8 right-8 text-gray-400 hover:text-black transition transform hover:rotate-90">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            
+            <div class="relative mb-12">
+                <input type="text" id="advSearchName" placeholder="Search" class="w-full text-5xl md:text-7xl font-black text-gray-900 placeholder-gray-300 outline-none border-b-4 border-transparent focus:border-red-700 transition pb-4 bg-transparent pl-20">
+                <svg class="absolute left-0 top-3 w-12 h-12 md:w-16 md:h-16 text-gray-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Max Budget</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-4 text-gray-400 font-bold">₱</span>
+                        <input type="number" id="advSearchPrice" min="0" oninput="validity.valid||(value='');" placeholder="Any" class="w-full pl-8 pr-4 py-4 rounded-2xl bg-white border border-gray-200 shadow-sm outline-none focus:border-red-500 font-bold text-gray-900 text-lg">
+                    </div>
                 </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Minimum Rating</label>
+                    <select id="advSearchStars" class="w-full px-4 py-4 rounded-2xl bg-white border border-gray-200 shadow-sm outline-none focus:border-red-500 font-bold text-gray-600 text-lg">
+                        <option value="0">Any Rating</option>
+                        <option value="3">3+ Stars</option>
+                        <option value="4">4+ Stars</option>
+                        <option value="5">5 Stars Only</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-12">
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Food Tags</label>
+                <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <input type="text" id="advSearchTagsInput" placeholder="Type a tag & press Enter..." class="w-full md:w-1/3 px-4 py-4 rounded-2xl bg-white border border-gray-200 shadow-sm outline-none focus:border-red-500 font-medium text-gray-900 text-sm">
+                    <div class="flex flex-wrap gap-2 flex-1" id="searchTagsContainer"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-4 mt-auto">
+                <button id="quickToggle" class="bg-gray-100 text-gray-800 font-bold py-4 px-8 rounded-2xl border border-gray-200 hover:bg-gray-200 transition flex items-center space-x-2">
+                    <span>⚡</span> <span id="quickToggleText">Grab & Go: Off</span>
+                </button>
+                <button onclick="filterMenu()" class="bg-red-700 text-white font-bold py-4 px-10 rounded-2xl shadow-xl shadow-red-700/30 hover:bg-red-800 transition text-lg flex items-center space-x-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <span>Show Results</span>
+                </button>
+                <button onclick="clearSearchFilters()" class="text-gray-400 hover:text-gray-700 font-bold py-4 px-6 rounded-2xl hover:bg-gray-100 transition text-sm ml-auto">
+                    Clear Filters
+                </button>
+            </div>
         </div>
     </div>
 
     <script src="/js/ui.js"></script>
     <script>
         (function(){
-            const currentUser = window.__NEARBITES_USER || (window.Nearbites && window.Nearbites.getCurrentUser ? window.Nearbites.getCurrentUser() : null);
+            const currentUser = JSON.parse(localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user'));
             if (!currentUser) return window.location.replace('/index.html');
 
             const userGreeting = document.getElementById('userGreeting');
             if (userGreeting) userGreeting.innerText = `Campus Menu - Hello, ${currentUser.username}!`;
 
-            // Render a Food Card (Reusable Function)
+            // Render a Food Card (WITH BENTO EMOJI)
             function createFoodCard(food, isHighlight = false) {
                 const card = document.createElement('div');
-                // Ensure search filtering works by adding data attributes
                 card.setAttribute('data-name', food.foodName.toLowerCase());
                 card.setAttribute('data-quick', food.isQuickServe);
+                card.setAttribute('data-price', food.foodPrice);
+                card.setAttribute('data-stars', food.avgRating || 0);
+                card.setAttribute('data-store', (food.storeName || '').toLowerCase());
+                card.setAttribute('data-tags', (food.foodTags || '').toLowerCase());
                 
-                card.className = `food-card bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition flex-none ${isHighlight ? 'w-72 border-red-200 shadow-red-100' : 'w-full'}`;
+                card.className = `food-card bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition flex flex-col self-stretch ${isHighlight ? 'w-72 flex-none border-red-200 shadow-red-100' : 'w-full'}`;
                 
                 let badgesHTML = '';
                 if (food.matchReasons && food.matchReasons.length > 0) {
                     food.matchReasons.forEach(reason => {
-                        badgesHTML += `<span class="inline-block bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full mr-1 mb-2">${reason}</span>`;
+                        badgesHTML += `<span class="inline-block bg-green-100 text-green-800 text-[10px] font-bold px-2 py-1 rounded-full mr-1 mb-2">✓ ${reason}</span>`;
                     });
                 }
+                if (food.foodTags) {
+                    const tagsArray = food.foodTags.split(',').filter(t => t.trim() !== '');
+                    const maxTags = 3; 
+                    tagsArray.slice(0, maxTags).forEach(tag => {
+                        badgesHTML += `<span class="inline-block bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-1 rounded-full mr-1 mb-2 uppercase tracking-wider">${tag.trim()}</span>`;
+                    });
+                    if (tagsArray.length > maxTags) {
+                        badgesHTML += `<span class="inline-block bg-gray-100 text-gray-500 border border-gray-200 text-[10px] font-bold px-2 py-1 rounded-full mr-1 mb-2 tracking-wider">+${tagsArray.length - maxTags} more</span>`;
+                    }
+                }
+
+                const rating = parseFloat(food.avgRating) > 0 ? parseFloat(food.avgRating).toFixed(1) : '0.0';
+                const reviewText = food.reviewCount > 0 ? `(${food.reviewCount})` : '';
 
                 card.innerHTML = `
-                    <img src="${food.imageUrl || 'https://placehold.co/400x200/eeeeee/a31621?text=Nearbites'}" class="w-full h-32 object-cover">
-                    <div class="p-4">
-                        ${badgesHTML}
-                        <div class="flex justify-between items-start mb-1">
-                            <h3 class="font-bold text-gray-900 line-clamp-1">${food.foodName}</h3>
-                            <span class="text-red-700 font-black text-sm">₱${food.foodPrice}</span>
+                    <div class="cursor-pointer group flex flex-col flex-grow" onclick="window.location.href='/product.html?id=${food.foodId}'">
+                        <div class="relative w-full h-32 flex-shrink-0 overflow-hidden bg-gray-50 border-b border-gray-100">
+                            ${food.imageUrl 
+                                ? `<img src="${food.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">`
+                                : `<div class="w-full h-full flex items-center justify-center text-6xl group-hover:scale-110 transition-transform duration-300 opacity-60">🍱</div>`
+                            }
+                            <div class="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg shadow-sm flex items-center space-x-1 text-xs font-black text-gray-900">
+                                <span class="text-yellow-400">★</span>
+                                <span>${rating} <span class="text-gray-400 font-medium">${reviewText}</span></span>
+                            </div>
                         </div>
-                        <p class="text-gray-500 text-xs line-clamp-2 mb-3">${food.description || ''}</p>
-                        <button onclick="askAIPairing('${food.foodName}')" class="w-full text-xs font-bold text-gray-900 bg-gray-100 hover:bg-gray-200 py-2 rounded-lg transition flex justify-center items-center space-x-1">
+                        
+                        <div class="p-4 pb-2 flex flex-col flex-grow">
+                            <div class="mb-1">${badgesHTML}</div>
+                            <div class="flex justify-between items-start mb-1">
+                                <h3 class="font-bold text-gray-900 line-clamp-1 group-hover:text-red-700 transition-colors">${food.foodName}</h3>
+                                <span class="text-red-700 font-black text-sm ml-2">₱${food.foodPrice}</span>
+                            </div>
+                            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center space-x-1">
+                                <span>📍</span> <span class="truncate">${food.storeName || 'Campus Store'}</span>
+                            </div>
+                            <p class="text-gray-500 text-xs line-clamp-2">${food.description || ''}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 pt-0 mt-auto">
+                        <button onclick="askAIPairing('${food.foodName.replace(/'/g, "\\'")}')" class="w-full text-xs font-bold text-gray-900 bg-gray-100 hover:bg-gray-200 py-2 rounded-lg transition flex justify-center items-center space-x-1">
                             <span>✨ AI Pair</span>
                         </button>
                     </div>
@@ -158,56 +264,102 @@
                     }
                 } catch (error) {
                     console.error(error);
-                    container.innerHTML = `<p class="text-red-500 font-bold p-4 bg-red-50 rounded-xl">Failed to load the smart menu. Server error.</p>`;
+                    container.innerHTML = `<p class="text-red-500 font-bold p-4 bg-red-50 rounded-xl">Failed to load menu.</p>`;
                 }
             }
 
             // =====================================
-            // FRONTEND FILTERING (Search & Quick Serve)
+            // ADVANCED SEARCH TAKEOVER LOGIC
             // =====================================
             let quickState = false;
+            let activeSearchTags = [];
             
-            window.filterMenu = function() {
-                const query = document.getElementById('searchMenu').value.toLowerCase();
-                const cards = document.querySelectorAll('.food-card');
-                
-                cards.forEach(card => {
-                    const name = card.getAttribute('data-name');
-                    const isQuick = card.getAttribute('data-quick') === '1';
-                    
-                    const matchesSearch = name.includes(query);
-                    const matchesQuick = !quickState || isQuick;
-                    
-                    if (matchesSearch && matchesQuick) {
-                        card.classList.remove('hidden');
-                    } else {
-                        card.classList.add('hidden');
-                    }
-                });
-            };
+            // 1. Tag Pill UI Logic
+            const tagInput = document.getElementById('advSearchTagsInput');
+            const tagContainer = document.getElementById('searchTagsContainer');
 
-            const searchInput = document.getElementById('searchMenu');
-            if (searchInput) searchInput.addEventListener('input', window.filterMenu);
-            
-            const quickBtn = document.getElementById('quickToggle');
-            if (quickBtn) {
-                quickBtn.addEventListener('click', () => {
-                    quickState = !quickState;
-                    quickBtn.innerText = `Grab & Go: ${quickState ? 'On' : 'Off'}`;
-                    if (quickState) {
-                        quickBtn.classList.add('bg-red-700', 'text-white');
-                        quickBtn.classList.remove('bg-gray-100', 'text-gray-800');
-                    } else {
-                        quickBtn.classList.remove('bg-red-700', 'text-white');
-                        quickBtn.classList.add('bg-gray-100', 'text-gray-800');
+            if (tagInput) {
+                tagInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = tagInput.value.trim().toLowerCase();
+                        if (val && !activeSearchTags.includes(val)) {
+                            activeSearchTags.push(val);
+                            renderSearchTags();
+                        }
+                        tagInput.value = '';
                     }
-                    window.filterMenu();
                 });
             }
 
-            // =====================================
-            // AI FUNCTIONS (Attached to Window)
-            // =====================================
+            function renderSearchTags() {
+                tagContainer.innerHTML = activeSearchTags.map((tag, index) => `
+                    <span class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-xl text-sm font-bold flex items-center space-x-1 shadow-sm">
+                        <span>${tag}</span>
+                        <button onclick="removeSearchTag(${index})" class="hover:text-red-900 ml-1">&times;</button>
+                    </span>
+                `).join('');
+            }
+
+            window.removeSearchTag = function(index) {
+                activeSearchTags.splice(index, 1);
+                renderSearchTags();
+            };
+
+            // 2. Grab & Go Toggle Logic (No longer live-filters)
+            const quickBtn = document.getElementById('quickToggle');
+            const quickText = document.getElementById('quickToggleText');
+            if (quickBtn) {
+                quickBtn.addEventListener('click', () => {
+                    quickState = !quickState;
+                    quickText.innerText = `Grab & Go: ${quickState ? 'On' : 'Off'}`;
+                    if (quickState) {
+                        quickBtn.className = 'bg-red-700 text-white font-bold py-4 px-8 rounded-2xl shadow-lg transition flex items-center space-x-2';
+                    } else {
+                        quickBtn.className = 'bg-gray-100 text-gray-800 font-bold py-4 px-8 rounded-2xl border border-gray-200 hover:bg-gray-200 transition flex items-center space-x-2';
+                    }
+                });
+            }
+            
+            // 3. The Execution Function (Redirects to new page!)
+            window.filterMenu = function() {
+                const qQuery = document.getElementById('advSearchName').value.trim();
+                const qPrice = document.getElementById('advSearchPrice').value;
+                const qStars = document.getElementById('advSearchStars').value;
+                
+                const params = new URLSearchParams();
+                if (qQuery) params.append('q', qQuery);
+                if (qPrice) params.append('price', qPrice);
+                if (qStars && qStars !== '0') params.append('stars', qStars);
+                if (activeSearchTags.length > 0) params.append('tags', activeSearchTags.join(','));
+                if (quickState) params.append('quick', 'true');
+                
+                window.location.href = `/search-results.html?${params.toString()}`;
+            };
+
+            // 4. Clear Filters Logic
+            window.clearSearchFilters = function() {
+                // Reset inputs
+                document.getElementById('advSearchName').value = '';
+                document.getElementById('advSearchPrice').value = '';
+                document.getElementById('advSearchStars').value = '0';
+                
+                // Reset Tags
+                activeSearchTags = [];
+                renderSearchTags();
+                
+                // Reset Grab & Go
+                if (quickState) {
+                    quickState = false;
+                    document.getElementById('quickToggleText').innerText = 'Grab & Go: Off';
+                    document.getElementById('quickToggle').className = 'bg-gray-100 text-gray-800 font-bold py-4 px-8 rounded-2xl border border-gray-200 hover:bg-gray-200 transition flex items-center space-x-2';
+                }
+                
+                // Execute a fresh filter (which will show all items and close the modal)
+                filterMenu(); 
+            };
+
+            // AI UI Logic
             const aiBox = document.getElementById('aiResponseBox');
             const aiText = document.getElementById('aiResponseText');
 
@@ -223,74 +375,219 @@
                 panel.classList.toggle('flex');
             };
 
+            window.switchAITab = function(tab) {
+                document.getElementById('ai-quick').classList.add('hidden');
+                document.getElementById('ai-weekly').classList.add('hidden');
+                document.getElementById('tab-quick').className = 'w-1/2 py-2 text-sm font-bold border-b-2 border-transparent text-gray-400 transition';
+                document.getElementById('tab-weekly').className = 'w-1/2 py-2 text-sm font-bold border-b-2 border-transparent text-gray-400 transition';
+                document.getElementById(`ai-${tab}`).classList.remove('hidden');
+                document.getElementById(`tab-${tab}`).className = 'w-1/2 py-2 text-sm font-bold border-b-2 border-red-500 text-red-500 transition';
+                if (aiBox) {
+                    aiBox.classList.add('hidden');
+                    aiText.innerHTML = '';
+                }
+            };
+
             window.toggleMealPlanModal = function(show) {
                 document.getElementById('mealPlanModal').classList.toggle('hidden', !show);
                 document.getElementById('mealPlanModal').classList.toggle('flex', show);
             };
 
-            window.askAIPairing = async function(foodName) {
-                // Ensure AI panel is open and visible
-                const panel = document.getElementById('aiPanel');
-                panel.classList.remove('hidden');
-                panel.classList.add('flex');
+            // Schedule Grid
+            const schedContainer = document.getElementById('scheduleGrid');
+            if (schedContainer) {
+                const days = [
+                    {i:1, n:'Mon', fn:'Monday'}, {i:2, n:'Tue', fn:'Tuesday'}, {i:3, n:'Wed', fn:'Wednesday'}, 
+                    {i:4, n:'Thu', fn:'Thursday'}, {i:5, n:'Fri', fn:'Friday'}, {i:6, n:'Sat', fn:'Saturday'}, {i:7, n:'Sun', fn:'Sunday'}
+                ];
+                let html = '';
+                days.forEach(d => {
+                    html += `
+                    <div class="flex items-center justify-between text-xs bg-gray-900 px-2 py-1.5 rounded-lg border border-gray-700">
+                        <label class="flex items-center space-x-2 text-gray-300 w-14 font-bold cursor-pointer hover:text-white transition">
+                            <input type="checkbox" class="day-check accent-red-600 w-3 h-3" data-day="${d.i}" data-dayname="${d.fn}" onchange="toggleMeals('${d.i}', this.checked)">
+                            <span>${d.n}</span>
+                        </label>
+                        <div class="flex space-x-3 opacity-30 pointer-events-none transition-opacity duration-300" id="meals-day-${d.i}">
+                            <label class="cursor-pointer flex items-center space-x-1 text-gray-400"><input type="checkbox" class="meal-check accent-red-600" value="Breakfast"><span>B</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 text-gray-400"><input type="checkbox" class="meal-check accent-red-600" value="Lunch"><span>L</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 text-gray-400"><input type="checkbox" class="meal-check accent-red-600" value="Dinner"><span>D</span></label>
+                            <label class="cursor-pointer flex items-center space-x-1 text-gray-400"><input type="checkbox" class="meal-check accent-red-600" value="Snack"><span>S</span></label>
+                        </div>
+                    </div>`;
+                });
+                schedContainer.innerHTML = html;
+            }
+
+            window.toggleMeals = function(dayId, isChecked) {
+                const container = document.getElementById('meals-day-' + dayId);
+                if (isChecked) {
+                    container.classList.remove('opacity-30', 'pointer-events-none');
+                    container.querySelectorAll('.meal-check')[1].checked = true; 
+                } else {
+                    container.classList.add('opacity-30', 'pointer-events-none');
+                    container.querySelectorAll('.meal-check').forEach(cb => cb.checked = false);
+                }
+            };
+
+            // =====================================
+            // AI FEATURE: PAIRING GENERATOR (WITH EMOJIS)
+            // =====================================
+            let currentPairTarget = '';
+
+            window.askAIPairing = function(targetFoodName) {
+                currentPairTarget = targetFoodName;
+                document.getElementById('aiPairSetup').classList.remove('hidden');
+                document.getElementById('aiLoading').classList.add('hidden');
+                document.getElementById('aiContent').classList.add('hidden');
                 
-                showAIThinking();
+                const modal = document.getElementById('aiModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            };
+
+            window.executeAIPairing = async function() {
+                document.getElementById('aiPairSetup').classList.add('hidden');
+                document.getElementById('aiLoading').classList.remove('hidden');
+
                 try {
                     const response = await fetch('/api/ai/recommend-bundle', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ foodName })
+                        body: JSON.stringify({ 
+                            userId: currentUser.userId, 
+                            foodName: currentPairTarget,
+                            customBudget: document.getElementById('pairBudget').value,
+                            goal: document.getElementById('pairGoal').value,
+                            minStars: document.getElementById('pairStars').value
+                        })
                     });
+                    
                     const data = await response.json();
-                    aiText.innerText = data.recommendation || data.error || 'No recommendation.';
-                } catch (err) {
-                    aiText.innerText = 'Connection to AI failed.';
-                }
+                    const container = document.getElementById('aiFoodContainer');
+                    container.innerHTML = '';
+                    
+                    if (response.ok && data.foods && data.foods.length > 0) {
+                        document.getElementById('aiPitch').innerText = `"${data.recommendation}"`;
+                        
+                        data.foods.forEach(food => {
+                            container.innerHTML += `
+                                <div onclick="window.location.href='/product.html?id=${food.foodId}'" class="bg-gray-50 rounded-2xl p-3 border border-gray-200 cursor-pointer hover:bg-red-50 hover:border-red-200 transition group flex items-center space-x-4 shadow-sm">
+                                    ${food.imageUrl 
+                                        ? `<img src="${food.imageUrl}" class="w-16 h-16 object-cover rounded-xl shadow-sm border border-gray-200">`
+                                        : `<div class="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center text-3xl shadow-sm border border-gray-200 overflow-hidden">🥤</div>`
+                                    }
+                                    <div class="flex-1">
+                                        <h4 class="font-bold text-gray-900 group-hover:text-red-700 transition leading-tight">${food.foodName}</h4>
+                                        <p class="text-xs text-gray-500 flex items-center space-x-1 mt-1">
+                                            <span>📍</span> <span class="truncate">${food.storeName || 'Campus Store'}</span>
+                                        </p>
+                                    </div>
+                                    <div class="font-black text-red-700 pr-2">₱${food.foodPrice}</div>
+                                </div>
+                            `;
+                        });
+                        
+                        document.getElementById('aiLoading').classList.add('hidden');
+                        document.getElementById('aiContent').classList.remove('hidden');
+                    } else {
+                        document.getElementById('aiPitch').innerText = "Oops! The AI couldn't find a suitable combo matching your parameters right now.";
+                        document.getElementById('aiLoading').classList.add('hidden');
+                        document.getElementById('aiContent').classList.remove('hidden');
+                    }
+                } catch (error) { alert("AI Connection Failed."); }
             };
 
-            window.getBudgetRecommendation = async function() {
+            // =====================================
+            // AI FEATURE: QUICK MEAL GENERATOR (WITH EMOJIS)
+            // =====================================
+            window.getQuickMealRecommendation = async function() {
                 showAIThinking();
-                const customBgt = document.getElementById('customBudget').value; 
                 try {
-                    const response = await fetch('/api/ai/recommend-by-budget', {
+                    const response = await fetch('/api/ai/recommend-quick-meal', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: currentUser.userId, customBudget: customBgt })
+                        body: JSON.stringify({ 
+                            userId: currentUser.userId, 
+                            customBudget: document.getElementById('quickBudget').value,
+                            goal: document.getElementById('quickGoal').value,
+                            minStars: document.getElementById('quickStars').value
+                        })
                     });
                     const data = await response.json();
-                    if (response.ok) aiText.innerHTML = `<span class="text-green-400 font-bold">Budget: ₱${data.budget}</span><br><br>${data.recommendation}`;
-                    else aiText.innerHTML = `${data.error}`;
-                } catch (err) {
-                    aiText.innerText = 'Connection to AI failed.';
-                }
+                    if (response.ok) {
+                        let html = '';
+                        if (data.budget) html += `<span class="text-green-400 font-bold block mb-2 text-[10px] uppercase tracking-wider">Budget: ₱${data.budget}</span>`;
+                        html += `<p class="text-gray-200 mb-4 text-sm leading-relaxed">${data.recommendation || "No recommendation."}</p>`;
+                        
+                        if (data.foods && data.foods.length > 0) {
+                            html += `<div class="space-y-2">`;
+                            data.foods.forEach(food => {
+                                html += `
+                                    <div onclick="window.location.href='/product.html?id=${food.foodId}'" class="flex items-center p-3 bg-gray-800 border border-gray-700 rounded-2xl shadow-sm hover:border-red-500 hover:bg-gray-700 transition duration-300 cursor-pointer group">
+                                        ${food.imageUrl 
+                                            ? `<img src="${food.imageUrl}" class="w-12 h-12 rounded-xl object-cover border border-gray-600 mr-3 group-hover:scale-105 transition-transform">`
+                                            : `<div class="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center text-2xl border border-gray-600 mr-3 overflow-hidden">🥡</div>`
+                                        }
+                                        <div class="flex-1">
+                                            <div class="font-bold text-white leading-tight text-sm">${food.foodName}</div>
+                                            <div class="text-[10px] text-gray-400 mt-0.5 flex items-center space-x-1">
+                                                <span>📍</span> <span>${food.storeName}</span>
+                                            </div>
+                                        </div>
+                                        <div class="font-black text-white text-xs bg-gray-900 px-2 py-1 rounded-lg border border-gray-700 group-hover:bg-red-500 transition-colors">₱${food.foodPrice}</div>
+                                    </div>
+                                `;
+                            });
+                            html += `</div>`;
+                        }
+                        aiText.innerHTML = html;
+                    } else { aiText.innerHTML = `${data.error}`; }
+                } catch (err) { aiText.innerText = 'Connection to AI failed.'; }
             };
 
+            // =====================================
+            // AI FEATURE: WEEKLY MEAL PLANNER (WITH EMOJIS)
+            // =====================================
             window.generateMealPlan = async function() {
+                let scheduleConfig = [];
+                document.querySelectorAll('.day-check:checked').forEach(cb => {
+                    let dId = cb.dataset.day;
+                    let meals = [];
+                    document.getElementById('meals-day-'+dId).querySelectorAll('.meal-check:checked').forEach(mc => meals.push(mc.value));
+                    if(meals.length > 0) scheduleConfig.push(`${cb.dataset.dayname} (Day ${dId}): ${meals.join(', ')}`);
+                });
+                
+                const finalScheduleStr = scheduleConfig.join(' | ');
+                if (!finalScheduleStr) return alert("Please select at least one day and meal!");
+
                 showAIThinking();
                 try {
                     const today = new Date().toISOString().split('T')[0];
                     const response = await fetch('/api/ai/generate-meal-plan', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: currentUser.userId, startDate: today })
+                        body: JSON.stringify({ 
+                            userId: currentUser.userId, 
+                            startDate: today, 
+                            goal: document.getElementById('weeklyGoal').value,
+                            schedule: finalScheduleStr,
+                            customBudget: document.getElementById('weeklyBudget').value,
+                            minStars: document.getElementById('weeklyStars').value
+                        })
                     });
                     const data = await response.json();
                     if (response.ok) {
                         aiText.innerHTML = `✅ ${data.message}`;
                         setTimeout(window.viewMealPlan, 1000); 
-                    } else {
-                        aiText.innerText = data.error || 'AI failed.';
-                    }
-                } catch (err) {
-                    aiText.innerText = 'Connection to AI failed.';
-                }
+                    } else { aiText.innerText = data.error || 'AI failed.'; }
+                } catch (err) { aiText.innerText = 'Connection to AI failed.'; }
             };
 
             window.viewMealPlan = async function() {
                 try {
                     const response = await fetch(`/api/mealplans/user/${currentUser.userId}`);
                     const data = await response.json();
-                    
                     if (!response.ok) return alert(data.error);
 
                     const container = document.getElementById('mealPlanContent');
@@ -298,30 +595,54 @@
                     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
                     for (let i = 1; i <= 7; i++) {
-                        const dayEntries = data.entries.filter(e => e.dayOfWeek === i);
+                        const dayEntries = data.entries.filter(e => Number(e.dayOfWeek) === i);
                         if (dayEntries.length === 0) continue;
 
-                        let html = `<div class="bg-gray-50 rounded-2xl p-4 border border-gray-100"><h4 class="font-bold text-red-700 mb-3 border-b pb-2">${days[i-1]}</h4><div class="space-y-2">`;
+                        let html = `<div class="mb-8 bg-gray-50 p-6 rounded-3xl border border-gray-100"><h4 class="font-black text-xl text-gray-900 mb-4 flex items-center space-x-2"><span>📅</span> <span>${days[i-1]}</span></h4><div class="space-y-3">`;
                         
                         dayEntries.forEach(entry => {
                             html += `
-                                <div class="flex justify-between items-center text-sm">
-                                    <div><span class="font-bold text-gray-700">${entry.mealType}:</span> ${entry.foodName}</div>
-                                    <span class="text-gray-500 font-semibold">₱${entry.foodPrice}</span>
+                                <div onclick="window.location.href='/product.html?id=${entry.foodId}'" class="flex items-center p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-red-200 transition duration-300 group cursor-pointer">
+                                    ${entry.imageUrl 
+                                        ? `<img src="${entry.imageUrl}" class="w-16 h-16 rounded-xl object-cover border border-gray-100 mr-4 group-hover:scale-105 transition-transform duration-300">`
+                                        : `<div class="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center text-3xl border border-gray-100 mr-4 group-hover:scale-105 transition-transform duration-300 overflow-hidden">🥗</div>`
+                                    }
+                                    <div class="flex-1">
+                                        <div class="text-[10px] font-black text-red-600 uppercase tracking-wider mb-1">${entry.mealType}</div>
+                                        <div class="font-bold text-gray-900 leading-tight text-lg">${entry.foodName}</div>
+                                        <div class="text-xs text-gray-500 mt-1 font-medium flex items-center space-x-1">
+                                            <span>📍</span> <span>${entry.storeName}</span>
+                                        </div>
+                                    </div>
+                                    <div class="font-black text-gray-900 text-lg bg-gray-50 px-3 py-2 rounded-xl group-hover:bg-red-50 group-hover:text-red-700 transition-colors">₱${entry.foodPrice}</div>
                                 </div>`;
                         });
-                        
                         html += `</div></div>`;
                         container.innerHTML += html;
                     }
-                    
                     toggleMealPlanModal(true);
-                } catch (error) {
-                    alert("Failed to load Meal Plan.");
+                } catch (error) { 
+                    alert("Failed to load Meal Plan."); 
                 }
             };
 
-            // Start loading items
+            // =====================================
+            // SEARCH TAKEOVER CLOSE LOGIC
+            // =====================================
+            window.closeSearchModal = function() {
+                const overlay = document.getElementById('searchOverlay');
+                if (!overlay) return;
+                
+                overlay.classList.remove('opacity-100');
+                overlay.classList.add('opacity-0');
+                
+                setTimeout(() => {
+                    overlay.classList.remove('flex');
+                    overlay.classList.add('hidden');
+                }, 300);
+            };
+
+            // Start
             loadSmartMenu();
         })();
     </script>

@@ -3,144 +3,415 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nearbites | Admin Dashboard</title>
+    <title>Nearbites | Admin Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
-        <meta name="nearbites-guard" content="3">
-        <script>
+    <meta name="nearbites-guard" content="3">
+    <script>
         const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
-        if (!raw) {
-            window.location.replace('/index.html');
-        } else {
-            const currentUser = JSON.parse(raw);
-            // Force Number() to avoid string/int bugs, 3 = Admin
-            if (Number(currentUser.userType) !== 3) {
-                window.location.replace('/index.html');
-            }
-        }
+        if (!raw) window.location.replace('/index.html');
+        else if (Number(JSON.parse(raw).userType) !== 3) window.location.replace('/index.html');
     </script>
 </head>
 <body class="bg-gray-900 font-sans min-h-screen flex flex-col text-white selection:bg-red-500">
 
     <div id="nearbites-navbar"></div>
 
-    <main class="flex-grow p-8 max-w-4xl mx-auto w-full">
+    <main class="flex-grow p-8 max-w-6xl mx-auto w-full">
         
-        <div class="bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-700">
-            <div class="mb-8 border-b border-gray-700 pb-4">
-                <h2 class="text-3xl font-bold text-white">Create Seller Account</h2>
-                <p class="text-gray-400 mt-2">Provision a new restaurant partner for the platform.</p>
-            </div>
+        <div class="flex space-x-2 mb-8 border-b border-gray-800 pb-4">
+            <button onclick="switchAdminTab('provision')" id="tab-provision" class="admin-tab px-6 py-2 rounded-full font-bold bg-red-700 text-white transition">Create Account</button>
+            <button onclick="switchAdminTab('users')" id="tab-users" class="admin-tab px-6 py-2 rounded-full font-bold bg-gray-800 text-gray-400 hover:bg-gray-700 transition">Manage Users</button>
+            <button onclick="switchAdminTab('stores')" id="tab-stores" class="admin-tab px-6 py-2 rounded-full font-bold bg-gray-800 text-gray-400 hover:bg-gray-700 transition">Manage Stores</button>
+        </div>
 
-            <form id="createSellerForm" class="space-y-6" onsubmit="handleCreateSeller(event)">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div id="section-provision" class="admin-section bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-700 block">
+            <div class="mb-8 border-b border-gray-700 pb-4">
+                <h2 class="text-3xl font-bold text-white">Provision New Account</h2>
+                <p class="text-gray-400 mt-2">Create new Sellers or grant God-Mode to fellow Admins.</p>
+            </div>
+            <form id="createAccountForm" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                        <label class="block text-sm font-semibold text-gray-300 mb-2">Seller/Store Name</label>
-                        <input type="text" name="username" required placeholder="e.g., Kuya Juan's Sisig"
-                               class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                        <label class="block text-sm font-semibold text-gray-300 mb-2">Account Role</label>
+                        <select name="userType" id="createRole" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                            <option value="2">Seller (Restaurant Partner)</option>
+                            <option value="3">Admin (Platform Staff)</option>
+                        </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-gray-300 mb-2">Business Email</label>
-                        <input type="email" name="email" required placeholder="contact@kuyajuan.com"
-                               class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                        <label class="block text-sm font-semibold text-gray-300 mb-2">Display Name</label>
+                        <input type="text" name="username" required placeholder="e.g., Kuya Juan / Admin Mark" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-300 mb-2">Email Address</label>
+                        <input type="email" name="email" id="createEmail" required placeholder="contact@domain.com" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
                     </div>
                 </div>
-                
                 <div>
                     <label class="block text-sm font-semibold text-gray-300 mb-2">Temporary Password</label>
-                    <input type="text" name="password" required placeholder="Provide this to the seller"
-                           class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                    <input type="text" name="password" required placeholder="Provide this to the user" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
                 </div>
-
-                <button type="submit" class="w-full bg-red-700 text-white font-bold py-4 rounded-xl hover:bg-red-600 transition shadow-lg shadow-red-900/50 mt-4">
-                    Provision Seller Account
-                </button>
+                <button type="submit" class="w-full bg-red-700 text-white font-bold py-4 rounded-xl hover:bg-red-600 transition shadow-lg mt-4">Create Account</button>
             </form>
         </div>
 
-        <div class="mt-8 bg-gray-800 rounded-3xl p-6 shadow-2xl border border-gray-700">
-            <div class="mb-4 flex items-center justify-between">
+        <div id="section-users" class="admin-section bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-700 hidden">
+            <div class="mb-6 flex items-center justify-between border-b border-gray-700 pb-4">
                 <div>
                     <h3 class="text-2xl font-bold">Manage Users</h3>
-                    <p class="text-gray-400 text-sm">View and remove accounts as needed.</p>
                 </div>
                 <div class="w-72">
-                    <input id="adminSearch" type="search" placeholder="Search users by name or email..." class="w-full px-3 py-2 rounded-lg bg-gray-900 text-white border border-gray-700 outline-none">
+                    <input id="adminUserSearch" type="search" placeholder="Search users..." class="w-full px-4 py-2 rounded-xl bg-gray-900 text-white border border-gray-700 focus:border-red-500 outline-none transition">
                 </div>
             </div>
-            <div id="userList" class="text-sm"></div>
+            <div id="userList" class="space-y-3"></div>
         </div>
 
+        <div id="section-stores" class="admin-section bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-700 hidden">
+            <div class="mb-6 flex items-center justify-between border-b border-gray-700 pb-4">
+                <div>
+                    <h3 class="text-2xl font-bold">Manage Stores</h3>
+                </div>
+                <div class="w-72">
+                    <input id="adminStoreSearch" type="search" placeholder="Search stores..." class="w-full px-4 py-2 rounded-xl bg-gray-900 text-white border border-gray-700 focus:border-red-500 outline-none transition">
+                </div>
+            </div>
+            <div id="adminStoreList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
     </main>
+
+    <div id="editUserModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-3xl p-8 w-full max-w-md shadow-2xl border border-gray-700">
+            <h3 class="text-2xl font-bold text-white mb-6">Edit User Details</h3>
+            <form id="editUserForm" class="space-y-4">
+                <input type="hidden" id="editUserId">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Display Name</label>
+                    <input type="text" id="editUserName" required class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Email</label>
+                    <input type="email" id="editUserEmail" required class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Account Role</label>
+                    <select id="editUserType" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                        <option value="1">User</option>
+                        <option value="2">Seller</option>
+                        <option value="3">Admin</option>
+                    </select>
+                </div>
+                <div class="border-t border-gray-700 pt-4 mt-4">
+                    <label class="block text-sm font-semibold text-red-400 mb-1">Reset Password</label>
+                    <input type="text" id="editUserPass" placeholder="Leave blank to keep current password" class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                </div>
+                <div class="flex space-x-3 pt-4">
+                    <button type="button" onclick="document.getElementById('editUserModal').classList.add('hidden'); document.getElementById('editUserModal').classList.remove('flex');" class="flex-1 py-3 font-bold text-gray-400 hover:text-white transition">Cancel</button>
+                    <button type="submit" class="flex-1 bg-red-700 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition shadow-lg">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="adminEditStoreModal" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-3xl p-8 w-full max-w-md shadow-2xl border border-gray-700">
+            <h3 class="text-2xl font-bold text-white mb-6">Edit Campus Store</h3>
+            <form id="adminEditStoreForm" class="space-y-4">
+                <input type="hidden" id="adminEditStoreId">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Store Name</label>
+                    <input type="text" id="adminEditStoreName" required class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-300 mb-1">Location</label>
+                    <input type="text" id="adminEditStoreLocation" required class="w-full px-4 py-3 bg-gray-900 rounded-xl border border-gray-600 focus:ring-2 focus:ring-red-600 text-white outline-none transition">
+                </div>
+                <div class="flex space-x-3 pt-4">
+                    <button type="button" onclick="document.getElementById('adminEditStoreModal').classList.add('hidden'); document.getElementById('adminEditStoreModal').classList.remove('flex');" class="flex-1 py-3 font-bold text-gray-400 hover:text-white transition">Cancel</button>
+                    <button type="submit" class="flex-1 bg-red-700 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition shadow-lg">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script src="/js/ui.js"></script>
     <script>
+        // TAB SWITCHING LOGIC
+        window.switchAdminTab = function(tabName) {
+            // Hide all sections
+            document.querySelectorAll('.admin-section').forEach(s => {
+                s.classList.remove('block');
+                s.classList.add('hidden');
+            });
+            // Reset all tabs to gray
+            document.querySelectorAll('.admin-tab').forEach(t => {
+                t.className = 'admin-tab px-6 py-2 rounded-full font-bold bg-gray-800 text-gray-400 hover:bg-gray-700 transition';
+            });
+            
+            // Show active section and paint tab red
+            document.getElementById('section-' + tabName).classList.remove('hidden');
+            document.getElementById('section-' + tabName).classList.add('block');
+            document.getElementById('tab-' + tabName).className = 'admin-tab px-6 py-2 rounded-full font-bold bg-red-700 text-white transition';
+        };
+
         (function(){
-            const currentUser = window.__NEARBITES_USER || (window.Nearbites && window.Nearbites.getCurrentUser ? window.Nearbites.getCurrentUser() : null);
-            if (!currentUser) return window.location.replace('/index.html');
-            if (currentUser.userType !== 3) return window.location.replace('/index.html');
+            const currentUser = JSON.parse(localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user'));
 
-            const adminGreeting = document.getElementById('adminGreeting');
-            if (adminGreeting) adminGreeting.innerText = `Admin: ${currentUser.username}`;
-
-            async function handleCreateSeller(event) {
-                event.preventDefault();
-                const formData = new FormData(event.target);
+            // 1. CREATE ACCOUNT
+            document.getElementById('createAccountForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
                 const data = Object.fromEntries(formData.entries());
+
+                // STRICT ADMIN DOMAIN CHECK
+                if (data.userType == '3') {
+                    if (!data.email.includes('@lpunetwork.edu.ph') && !data.email.includes('@lpunetwork')) {
+                        return alert('❌ Error: Admin accounts MUST use an official @lpunetwork email address!');
+                    }
+                }
+                
                 try {
-                    const response = await fetch('/api/admin/create-seller', {
+                    const response = await fetch('/api/users/signup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
                     const result = await response.json();
                     if (response.ok) {
-                        alert('✅ ' + result.message);
-                        event.target.reset();
-                    } else {
-                        alert('❌ ' + result.error);
-                    }
-                } catch (error) {
-                    alert('Server error. Ensure your backend is running!');
-                }
-            }
+                        alert('✅ Account provisioned successfully!');
+                        e.target.reset();
+                        loadUsers();
+                    } else { alert('❌ ' + result.error); }
+                } catch (error) { alert('Server error.'); }
+            });
 
-            const form = document.getElementById('createSellerForm');
-            if (form) form.addEventListener('submit', handleCreateSeller);
-            // Load and manage users
-            async function loadUsers() {
+            // 2. MANAGE USERS
+            window.loadUsers = async function() {
                 try {
                     const res = await fetch('/api/admin/users');
                     const users = await res.json();
-                    const q = (document.getElementById('adminSearch') && document.getElementById('adminSearch').value || '').toLowerCase().trim();
+                    const q = (document.getElementById('adminUserSearch').value || '').toLowerCase().trim();
                     const container = document.getElementById('userList');
-                    if (!container) return;
                     container.innerHTML = '';
+                    
                     users.filter(u => {
                         if (!q) return true;
                         return (u.username && u.username.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q));
                     }).forEach(u => {
+                        let role = u.userType == 1 ? 'User' : u.userType == 2 ? 'Seller' : 'Admin';
+                        let roleColor = u.userType == 1 ? 'text-blue-400' : u.userType == 2 ? 'text-green-400' : 'text-purple-400';
+                        
+                        // Detect status
+                        let rawActive = u.isActive;
+                        if (rawActive && typeof rawActive === 'object' && rawActive.data) rawActive = rawActive.data[0];
+                        let isActive = (rawActive == 0) ? 0 : 1;
+                        
+                        let statusColor = isActive ? 'bg-green-500' : 'bg-red-500';
+                        let statusText = isActive ? 'Active' : 'Suspended';
+                        
+                        // Change button text dynamically
+                        let toggleText = isActive ? 'Suspend' : 'Unsuspend';
+                        let toggleBtnClass = isActive 
+                            ? 'bg-orange-900/20 text-orange-400 border-orange-900/50 hover:bg-orange-900' 
+                            : 'bg-green-900/20 text-green-400 border-green-900/50 hover:bg-green-900';
+
                         const row = document.createElement('div');
-                        row.className = 'flex items-center justify-between py-2 border-b border-gray-700';
-                        row.innerHTML = `<div class="flex-1">${u.username} <span class="text-xs text-gray-400">(${u.email})</span></div><div class="w-32 text-right">Type: ${u.userType}</div>`;
-                        const del = document.createElement('button');
-                        del.className = 'ml-4 px-3 py-1 bg-red-600 rounded text-sm';
-                        del.innerText = 'Delete';
-                        del.addEventListener('click', async () => {
-                            if (!confirm('Delete user?')) return;
-                            const r = await fetch(`/api/admin/users/${u.userId}`, { method: 'DELETE' });
-                            if (r.ok) loadUsers(); else alert('Failed to delete user');
-                        });
-                        row.appendChild(del);
+                        row.className = `flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border transition ${isActive ? 'bg-gray-900 border-gray-700' : 'bg-red-900/10 border-red-900/50 opacity-80'}`;
+                        row.innerHTML = `
+                            <div class="flex items-center space-x-4 mb-4 md:mb-0">
+                                <div class="w-3 h-3 rounded-full ${statusColor}" title="${statusText}"></div>
+                                <div>
+                                    <div class="font-bold text-white text-lg">${u.username} <span class="${roleColor} text-xs uppercase tracking-wider ml-2">${role}</span></div>
+                                    <div class="text-sm ${isActive ? 'text-gray-400' : 'text-red-400'}">${u.email}</div>
+                                </div>
+                            </div>
+                        `;
+
+                        const controls = document.createElement('div');
+                        controls.className = 'flex space-x-2';
+
+                        const editBtn = document.createElement('button');
+                        editBtn.className = 'px-4 py-2 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white rounded-lg text-sm font-bold transition border border-gray-600';
+                        editBtn.innerText = 'Edit';
+                        editBtn.onclick = () => window.adminEditUser(u.userId, u.username, u.email, u.userType);
+
+                        const suspendBtn = document.createElement('button');
+                        suspendBtn.className = `px-4 py-2 rounded-lg text-sm font-bold transition border ${toggleBtnClass}`;
+                        suspendBtn.innerText = toggleText;
+                        suspendBtn.onclick = async () => window.toggleStatus('users', u.userId, isActive);
+
+                        const delBtn = document.createElement('button');
+                        delBtn.className = 'px-4 py-2 bg-red-900/20 text-red-400 hover:bg-red-900 hover:text-white rounded-lg text-sm font-bold transition border border-red-900/50';
+                        delBtn.innerText = 'Delete';
+                        delBtn.onclick = async () => {
+                            if (!confirm('Permanently delete this user?')) return;
+                            try {
+                                const r = await fetch(`/api/admin/users/${u.userId}`, { method: 'DELETE' });
+                                if (r.ok) loadUsers(); else alert('Failed to delete user');
+                            } catch(e) { alert('Connection error'); }
+                        };
+
+                        controls.appendChild(editBtn);
+                        if (u.userId !== currentUser.userId) {
+                            controls.appendChild(suspendBtn);
+                            controls.appendChild(delBtn);
+                        }
+                        
+                        row.appendChild(controls);
                         container.appendChild(row);
                     });
                 } catch (err) { console.error(err); }
-            }
+            };
 
-            document.addEventListener('DOMContentLoaded', () => {
-                loadUsers();
-                const s = document.getElementById('adminSearch');
-                if (s) s.addEventListener('input', loadUsers);
+            window.adminEditUser = function(id, name, email, type) {
+                document.getElementById('editUserId').value = id;
+                document.getElementById('editUserName').value = name;
+                document.getElementById('editUserEmail').value = email;
+                document.getElementById('editUserType').value = type;
+                document.getElementById('editUserPass').value = ''; 
+                
+                const modal = document.getElementById('editUserModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            };
+
+            document.getElementById('editUserForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = document.getElementById('editUserId').value;
+                const bodyData = {
+                    username: document.getElementById('editUserName').value,
+                    email: document.getElementById('editUserEmail').value,
+                    userType: document.getElementById('editUserType').value
+                };
+
+                const newPass = document.getElementById('editUserPass').value;
+                if (newPass) bodyData.password = newPass;
+
+                try {
+                    const response = await fetch(`/api/users/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(bodyData)
+                    });
+                    if (response.ok) {
+                        document.getElementById('editUserModal').classList.add('hidden');
+                        document.getElementById('editUserModal').classList.remove('flex');
+                        loadUsers();
+                    } else { alert("Failed to update user."); }
+                } catch (error) { alert("Connection error."); }
             });
+
+            // 3. MANAGE STORES
+            window.loadAdminStores = async function() {
+                try {
+                    const res = await fetch('/api/admin/stores');
+                    const stores = await res.json();
+                    const q = (document.getElementById('adminStoreSearch').value || '').toLowerCase().trim();
+                    const container = document.getElementById('adminStoreList');
+                    container.innerHTML = '';
+                    
+                    stores.filter(s => {
+                        if (!q) return true;
+                        return (s.storeName && s.storeName.toLowerCase().includes(q)) || 
+                               (s.storeLocation && s.storeLocation.toLowerCase().includes(q));
+                    }).forEach(s => {
+                        // Bulletproof MySQL Boolean Parser
+                        let rawActive = s.isActive;
+                        if (rawActive && typeof rawActive === 'object' && rawActive.data) rawActive = rawActive.data[0];
+                        let isActive = (rawActive == 0) ? 0 : 1;
+                        let toggleText = isActive ? 'Suspend' : 'Unsuspend';
+                        let toggleBtnClass = isActive 
+                            ? 'bg-orange-900/20 text-orange-400 border-orange-900/50 hover:bg-orange-900' 
+                            : 'bg-green-900/20 text-green-400 border-green-900/50 hover:bg-green-900';
+                        
+                        const card = document.createElement('div');
+                        card.className = `p-5 rounded-2xl border flex flex-col justify-between transition ${isActive ? 'bg-gray-900 border-gray-700' : 'bg-red-900/10 border-red-900/50 opacity-80'}`;
+                        card.innerHTML = `
+                            <div class="mb-4">
+                                <div class="flex justify-between items-start mb-2">
+                                    <h4 class="font-bold ${isActive ? 'text-white' : 'text-red-400'} text-lg leading-tight flex items-center">
+                                        ${s.storeName}
+                                        ${!isActive ? '<span class="bg-red-600 text-white text-[10px] uppercase px-2 py-0.5 rounded ml-2">Suspended</span>' : ''}
+                                    </h4>
+                                    <span class="bg-gray-800 text-gray-400 text-[10px] uppercase tracking-wider px-2 py-1 rounded-md ml-2">ID: ${s.storeId}</span>
+                                </div>
+                                <p class="text-gray-400 text-sm flex items-center space-x-1 mb-1">
+                                    <span>📍</span> <span>${s.storeLocation}</span>
+                                </p>
+                                <p class="text-red-400 text-xs font-bold">
+                                    Manager: ${s.managerName || 'Unknown'} <span class="text-gray-500 font-normal">(${s.managerEmail || 'N/A'})</span>
+                                </p>
+                            </div>
+                            <div class="flex space-x-2 border-t border-gray-800 pt-3 mt-auto">
+                                <button onclick="adminEditStore(${s.storeId}, '${s.storeName.replace(/'/g, "\\'")}', '${s.storeLocation.replace(/'/g, "\\'")}')" class="flex-1 bg-gray-800 text-gray-300 py-2 rounded-xl font-bold hover:bg-gray-700 transition text-sm border border-gray-600">Edit</button>
+                                <button onclick="window.toggleStatus('stores', ${s.storeId}, ${isActive})" class="flex-1 font-bold py-2 rounded-xl transition text-sm border ${toggleBtnClass}">${toggleText}</button>
+                                <button onclick="adminDeleteStore(${s.storeId})" class="flex-1 bg-red-900/20 text-red-400 py-2 rounded-xl font-bold hover:bg-red-900 hover:text-white transition text-sm border border-red-900/50">Delete</button>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                } catch (err) { console.error(err); }
+            };
+
+            window.adminEditStore = function(storeId, currentName, currentLocation) {
+                document.getElementById('adminEditStoreId').value = storeId;
+                document.getElementById('adminEditStoreName').value = currentName;
+                document.getElementById('adminEditStoreLocation').value = currentLocation;
+                
+                const modal = document.getElementById('adminEditStoreModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            };
+
+            document.getElementById('adminEditStoreForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const storeId = document.getElementById('adminEditStoreId').value;
+                const newName = document.getElementById('adminEditStoreName').value;
+                const newLoc = document.getElementById('adminEditStoreLocation').value;
+
+                try {
+                    const response = await fetch(`/api/stores/${storeId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ storeName: newName, storeLocation: newLoc })
+                    });
+                    if (response.ok) {
+                        document.getElementById('adminEditStoreModal').classList.add('hidden');
+                        document.getElementById('adminEditStoreModal').classList.remove('flex');
+                        loadAdminStores(); 
+                    } else { alert("Failed to update store."); }
+                } catch (error) { alert("Connection error."); }
+            });
+
+            window.adminDeleteStore = async function(storeId) {
+                if (!confirm("🚨 WARNING: Are you sure you want to permanently delete this store? This will wipe ALL of its food items and reviews!")) return;
+                try {
+                    const response = await fetch(`/api/stores/${storeId}`, { method: 'DELETE' });
+                    if (response.ok) loadAdminStores(); else alert("Failed to delete store.");
+                } catch (error) { alert("Connection error."); }
+            };
+
+            // 4. UNIVERSAL SUSPENSION TOGGLE
+            window.toggleStatus = async function(type, id, currentStatus) {
+                const newStatus = currentStatus ? 0 : 1;
+                try {
+                    const response = await fetch(`/api/${type}/${id}`, { 
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ isActive: newStatus })
+                    });
+                    if (response.ok) {
+                        if (type === 'users') loadUsers();
+                        if (type === 'stores') loadAdminStores();
+                    } else alert('Failed to update status');
+                } catch(e) { alert('Connection error'); }
+            };
+
+            // Start up all the Admin Modules!
+            document.getElementById('adminUserSearch').addEventListener('input', loadUsers);
+            document.getElementById('adminStoreSearch').addEventListener('input', loadAdminStores);
+            loadUsers();
+            loadAdminStores();
         })();
     </script>
 </body>

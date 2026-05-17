@@ -7,25 +7,27 @@ const openrouter = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-/**
- * A helper function to ask GPT a question via OpenRouter
- */
+// ==========================================
+// THE CORE AI HELPER
+// ==========================================
 async function askGPT(systemPrompt, userPrompt) {
     try {
         const response = await openrouter.chat.completions.create({
-            // You can use "openai/gpt-3.5-turbo" or "openai/gpt-4o-mini" (which is very fast and cheap/free)
+            // You mentioned it was running GPT-3.5 earlier! 
+            // Change this back to Qwen if you prefer: "qwen/qwen-2.5-72b-instruct"
             model: "openai/gpt-3.5-turbo", 
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }
-            ],
+            ]
         });
-
+        
         return response.choices[0].message.content;
     } catch (error) {
-        console.error("Error communicating with OpenRouter:", error);
-        throw new Error("AI failed to generate a response.");
+        console.error("OpenRouter API Error:", error);
+        throw error;
     }
 }
 
+// Export it cleanly so server.js can use it!
 module.exports = { askGPT };

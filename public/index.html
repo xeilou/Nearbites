@@ -5,6 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nearbites | Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // --- BULLETPROOF SESSION GUARD ---
+        try {
+            const raw = localStorage.getItem('nearbites_user') || sessionStorage.getItem('nearbites_user');
+            
+            // Check if the data exists AND isn't the poisoned "undefined" string
+            if (raw && raw !== "undefined") {
+                const currentUser = JSON.parse(raw);
+                
+                // If they have valid data, instantly redirect them to their dashboard!
+                const type = Number(currentUser.userType);
+                if (type === 1) window.location.replace('/student-dashboard.html');
+                else if (type === 2) window.location.replace('/seller-dashboard.html');
+                else if (type === 3) window.location.replace('/admin-dashboard.html');
+            } else {
+                // If it's poisoned, wipe it clean!
+                localStorage.removeItem('nearbites_user');
+                sessionStorage.removeItem('nearbites_user');
+            }
+        } catch (error) {
+            // If JSON.parse fails for ANY reason, nuke the corrupted storage
+            console.error("Wiping corrupted session data...");
+            localStorage.removeItem('nearbites_user');
+            sessionStorage.removeItem('nearbites_user');
+        }
+    </script>
 </head>
 <body class="bg-gray-50 flex items-center justify-center min-h-screen font-sans selection:bg-red-200">
 
@@ -31,8 +57,8 @@
                 </div>
             </div>
             <div class="flex items-center justify-between">
-                <label class="flex items-center space-x-2 text-sm text-gray-600">
-                    <input type="checkbox" id="rememberMe" />
+                <label class="flex items-center space-x-2 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" id="rememberMe" class="rounded text-red-700 focus:ring-red-700">
                     <span>Remember me</span>
                 </label>
                 <button type="submit" class="bg-red-700 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-800 transition shadow-lg shadow-red-200">Log In</button>
@@ -55,17 +81,30 @@
                 <p class="text-xs text-gray-400 mt-1">Must use a school email address.</p>
             </div>
             <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
-            <div class="relative">
-                <input type="password" name="password" id="signupPassword" required 
-                    class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none transition">
-                <button type="button" onclick="togglePassword('signupPassword')" class="absolute inset-y-0 right-4 flex items-center text-gray-400 hover:text-red-700 transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                </button>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                <div class="relative">
+                    <input type="password" name="password" id="signupPassword" required 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-red-700 outline-none transition">
+                    <button type="button" onclick="togglePassword('signupPassword')" class="absolute inset-y-0 right-4 flex items-center text-gray-400 hover:text-red-700 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    </button>
+                </div>
+                
+                <ul class="text-xs mt-3 space-y-1 bg-gray-50 p-3 rounded-lg border border-gray-100" id="pw-rules">
+                    <li id="rule-len" class="flex items-center space-x-2 text-gray-400 transition-colors duration-200">
+                        <span class="icon">❌</span> <span>At least 8 characters</span>
+                    </li>
+                    <li id="rule-num" class="flex items-center space-x-2 text-gray-400 transition-colors duration-200">
+                        <span class="icon">❌</span> <span>Contains a number</span>
+                    </li>
+                    <li id="rule-spc" class="flex items-center space-x-2 text-gray-400 transition-colors duration-200">
+                        <span class="icon">❌</span> <span>Contains a special character (@$!%*#?&)</span>
+                    </li>
+                </ul>
             </div>
-        </div>
-            <button type="submit" class="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-lg">
-                Create Student Account
+            
+            <button type="submit" id="signupBtn" class="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-black transition shadow-lg opacity-50 cursor-not-allowed" disabled>
+                Create User Account
             </button>
             <p class="text-center text-sm text-gray-600 mt-4">
                 Already have an account? <a href="#" onclick="toggleMode('login')" class="text-red-700 font-bold hover:underline">Log in</a>
@@ -91,32 +130,57 @@
             }
         }
 
+        // Live Password Validation Logic
+        const signupPw = document.getElementById('signupPassword');
+        const signupBtn = document.getElementById('signupBtn');
+        const rules = {
+            len: { el: document.getElementById('rule-len'), test: val => val.length >= 8 },
+            num: { el: document.getElementById('rule-num'), test: val => /\d/.test(val) },
+            spc: { el: document.getElementById('rule-spc'), test: val => /[@$!%*#?&]/.test(val) }
+        };
+
+        signupPw.addEventListener('input', (e) => {
+            const val = e.target.value;
+            let allValid = true;
+
+            for (const key in rules) {
+                const isValid = rules[key].test(val);
+                const el = rules[key].el;
+                const icon = el.querySelector('.icon');
+                
+                if (isValid) {
+                    el.classList.replace('text-gray-400', 'text-green-600');
+                    icon.innerText = '✅';
+                } else {
+                    el.classList.replace('text-green-600', 'text-gray-400');
+                    icon.innerText = '❌';
+                    allValid = false;
+                }
+            }
+
+            // Enable or disable the submit button based on validation
+            if (allValid) {
+                signupBtn.disabled = false;
+                signupBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                signupBtn.disabled = true;
+                signupBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
         // Handle User Sign Up
         async function handleSignup(event) {
             event.preventDefault();
             const formData = new FormData(event.target);
             const data = Object.fromEntries(formData.entries());
             
-            // We force userType 1 (Student) for public signups
             data.userType = 1; 
-            // Client-side password rules
-            if (!data.password || data.password.length < 8) {
-                return alert('Password must be at least 8 characters long.');
-            }
 
-            // Optionally enforce school email domain
             if (!data.email || !data.email.includes('@lpunetwork')) {
                 return alert('Please register with your school email (must include @lpunetwork).');
             }
+
             try {
-                const password = document.getElementById('signupPassword').value;
-                const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
-
-                if (!strongPasswordRegex.test(password)) {
-                    alert("Password must be at least 8 characters long and include at least one number and one special character.");
-                    return; // Stops the signup process
-                }
-
                 const response = await fetch('/api/users/signup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -128,6 +192,8 @@
                 if (response.ok) {
                     alert('Account created successfully! You can now log in.');
                     event.target.reset();
+                    // Reset validation visuals
+                    signupPw.dispatchEvent(new Event('input'));
                     toggleMode('login');
                 } else {
                     alert(result.error || 'Failed to sign up.');
@@ -153,44 +219,54 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Store user according to Remember Me
-                    const rememberMe = document.getElementById('rememberMe').checked;
-                    const userData = JSON.stringify(result.user);
-
-                    if (rememberMe) {
-                        localStorage.setItem('nearbites_user', userData);
+                    const rememberMeChecked = document.getElementById('rememberMe').checked;
+                    
+                    // Save user to storage using RESULT, not data!
+                    if (rememberMeChecked) {
+                        localStorage.setItem('nearbites_user', JSON.stringify(result.user));
                     } else {
-                        sessionStorage.setItem('nearbites_user', userData);
+                        sessionStorage.setItem('nearbites_user', JSON.stringify(result.user));
                     }
 
-                    // Force change-password flow if required
+                    // --- NEW: PASSWORD LOCKDOWN CHECK ---
+                    // Using RESULT, not data!
                     if (result.mustChangePassword) {
-                        window.location.replace('/change-password.html');
+                        alert("Welcome! As a new Seller, you MUST change your default password before continuing.");
+                        window.location.replace('/seller-dashboard.html?forcePassword=true');
                         return;
                     }
+                    // ------------------------------------
 
-                    // Routing Logic
-                    if (result.user.userType === 1) {
-                        // Check if the user has set up their preferences yet
-                        const prefResponse = await fetch(`/api/preferences/${result.user.userId}`);
-                        const preferences = await prefResponse.json();
-
-                        if (preferences.length === 0) {
-                            // First time login! Send to onboarding
-                            window.location.href = '/onboarding.html';
-                        } else {
-                            // Returning user! Send to dashboard
-                            window.location.href = '/student-dashboard.html';
-                        }
-                    } else if (result.user.userType === 2) {
-                        window.location.href = '/seller-dashboard.html';
-                    } else if (result.user.userType === 3) {
-                        window.location.href = '/admin-dashboard.html';
-                    }
+                    // Normal Redirects using RESULT
+                    const type = Number(result.user.userType);
+                    if (type === 1) window.location.replace('/student-dashboard.html');
+                    else if (type === 2) window.location.replace('/seller-dashboard.html');
+                    else if (type === 3) window.location.replace('/admin-dashboard.html');
+                    
                 } else {
-                    alert(result.error || 'Invalid credentials.');
+                    // Trigger the gorgeous modal instead of a browser alert!
+                    const modal = document.getElementById('errorModal');
+                    const title = document.getElementById('errorTitle');
+                    const msg = document.getElementById('errorMessage');
+                    const icon = document.getElementById('errorIcon');
+
+                    // If it's specifically a suspension error, theme it appropriately
+                    if (result.error && result.error.includes('suspended')) {
+                        icon.innerText = '🚨';
+                        title.innerText = 'Account Suspended';
+                        msg.innerText = 'Your access has been temporarily restricted by the platform administrator.';
+                    } else {
+                        // Standard invalid login
+                        icon.innerText = '❌';
+                        title.innerText = 'Login Failed';
+                        msg.innerText = result.error || 'Invalid email or password.';
+                    }
+                    
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
                 }
             } catch (error) {
+                console.error(error);
                 alert('Server error. Ensure your backend is running!');
             }
         }
@@ -205,5 +281,14 @@
             }
         }
     </script>
+
+    <div id="errorModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm transition-all">
+        <div class="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center border border-gray-100">
+            <div class="text-5xl mb-4" id="errorIcon">🚨</div>
+            <h3 class="text-2xl font-black text-gray-900 mb-2" id="errorTitle">Access Denied</h3>
+            <p class="text-gray-500 mb-6 font-medium" id="errorMessage">This account has been suspended.</p>
+            <button onclick="document.getElementById('errorModal').classList.add('hidden'); document.getElementById('errorModal').classList.remove('flex');" class="w-full bg-gray-900 text-white font-bold py-3.5 rounded-xl hover:bg-black transition shadow-md">Close</button>
+        </div>
+    </div>
 </body>
 </html>
