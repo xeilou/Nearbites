@@ -213,11 +213,3 @@ curl -X POST http://localhost:3000/api/ai/recommend-bundle \
 - Add a `seed` command or script for local developer accounts.
 
 ---
-
-If you'd like, I can:
-
-- add a `start` script to `package.json`,
-- create a `.env.example` file in the repo,
-- or create basic curl-based smoke tests for the core endpoints.
-
-Tell me which of those you'd like next.
